@@ -19,6 +19,9 @@ use runtime::*;
 use std::io::Cursor;
 use thread::Thread;
 use util::stringify;
+use std::time::*;
+extern crate chrono;
+use chrono::Local;
 
 pub mod agent;
 pub mod bytecode;
@@ -47,6 +50,12 @@ pub mod version;
  * they will have to find a new home, eventually
  */
 
+fn nowTime() -> String {
+    let date = Local::now();
+    return date.format("%Y-%m-%d %H:%M:%S.%6f").to_string();
+    //println!("{:?} {}", date, date.format("[%Y-%m-%d %H:%M:%S.%3f]"));
+}
+
 fn on_method_entry(event: MethodInvocationEvent) {
     let shall_record = match static_context().config.read() {
         Ok(cfg) => (*cfg).entry_points.iter().any(|item| *item == format!("{}.{}.{}", event.class_sig.package, event.class_sig.name, event.method_sig.name) ), //event.class_name.as_str() == item),
@@ -54,7 +63,7 @@ fn on_method_entry(event: MethodInvocationEvent) {
     };
 
     if !shall_record {
-        println!("[M-{}.{}{}]", event.class_sig.package, event.class_sig.name, event.method_sig.name);
+        println!("[{}] [{}] method_entry [{}.{}.{}]", nowTime(), event.thread.name, event.class_sig.package, event.class_sig.name, event.method_sig.name);
     }
 
     static_context().method_enter(&event.thread.id);
@@ -63,46 +72,46 @@ fn on_method_entry(event: MethodInvocationEvent) {
 fn on_method_exit(event: MethodInvocationEvent) {
     match static_context().method_exit(&event.thread.id) {
         //Some(_) => (),
-        Some(duration) => println!("Method {} exited after {}", event.method_sig.name, duration),
-        None => println!("Method has no start: {}", event.method_sig.name)
+        Some(duration) => println!("[{}] [{}] method_exit [{}.{}.{}] after {}", nowTime(), event.thread.name, event.class_sig.package, event.class_sig.name, event.method_sig.name, duration),
+        None => println!("[{}] [{}] method_no_start [{}.{}.{}]", nowTime(), event.thread.name, event.class_sig.package, event.class_sig.name, event.method_sig.name)
     }
 }
 
 fn on_thread_start(thread: Thread) {
-    println!("[TS-{}]", thread.name);
+    println!("[{}] [TS-{}]", nowTime(), thread.name);
 
     static_context().thread_start(&thread.id);
 }
 
 fn on_thread_end(thread: Thread) {
-    println!("[TE-{}]", thread.name);
+    println!("[{}] [TE-{}]", nowTime(), thread.name);
 
     match static_context().thread_end(&thread.id) {
-        Some(duration) => println!("Thread {} lived {}", thread.name, duration),
-        None => println!("Thread {} has no start", thread.name)
+        Some(duration) => println!("[{}] Thread {} lived {}", nowTime(), thread.name, duration),
+        None => println!("[{}] Thread {} has no start", nowTime(), thread.name)
     }
 }
 
 fn on_monitor_wait(thread: Thread) {
-    println!("[W1-{}]", thread.name);
+    println!("[{}] [W1-{}]", nowTime(), thread.name);
 }
 
 fn on_monitor_waited(thread: Thread) {
-    println!("[W2-{}]", thread.name);
+    println!("[{}] [W2-{}]", nowTime(), thread.name);
 }
 
 fn on_monitor_contended_enter(thread: Thread) {
-    println!("[C1-{}]", thread.name);
+    println!("[{}] [C1-{}]", nowTime(), thread.name);
 
     static_context().monitor_enter(&thread.id);
 }
 
 fn on_monitor_contended_entered(thread: Thread) {
-    println!("[C2-{}]", thread.name);
+    println!("[{}] [C2-{}]", nowTime(), thread.name);
 
     match static_context().monitor_entered(&thread.id) {
-        Some(duration) => println!("Thread {} waited {}", thread.name, duration),
-        None => println!("Thread {} has never waited", thread.name)
+        Some(duration) => println!("[{}] Thread {} waited {}", nowTime(), thread.name, duration),
+        None => println!("[{}] Thread {} has never waited", nowTime(), thread.name)
     }
 }
 
@@ -152,19 +161,19 @@ fn on_class_file_load(mut event: ClassFileLoadEvent) -> Option<Vec<u8>> {
 }
 
 fn on_garbage_collection_start() {
-    println!("GC Start: {:?}", std::time::Instant::now());
+    println!("[{}] GC Start: {:?}", nowTime(), std::time::Instant::now());
 }
 
 fn on_garbage_collection_finish() {
-    println!("GC Finish: {:?}", std::time::Instant::now());
+    println!("[{}] GC Finish: {:?}", nowTime(), std::time::Instant::now());
 }
 
 fn on_object_alloc(event: ObjectAllocationEvent) {
-    println!("Object allocation: (size: {})", event.size);
+    println!("[{}] [{}] Object allocation: (size: {})", nowTime(), event.thread.name, event.size);
 }
 
 fn on_object_free() {
-    println!("Object free");
+    println!("[{}] Object free", nowTime());
 }
 
 ///
@@ -184,13 +193,13 @@ pub extern fn Agent_OnLoad(vm: JavaVMPtr, options: MutString, reserved: VoidPtr)
 
     let mut agent = Agent::new(vm);
 
-    //agent.on_garbage_collection_start(Some(on_garbage_collection_start));
-    //agent.on_garbage_collection_finish(Some(on_garbage_collection_finish));
-    //agent.on_vm_object_alloc(Some(on_object_alloc));
-    //agent.on_vm_object_free(Some(on_object_free));
-    //agent.on_class_file_load(Some(on_class_file_load));
-    //agent.on_method_entry(Some(on_method_entry));
-    //agent.on_method_exit(Some(on_method_exit));
+    agent.on_garbage_collection_start(Some(on_garbage_collection_start));
+    agent.on_garbage_collection_finish(Some(on_garbage_collection_finish));
+    agent.on_vm_object_alloc(Some(on_object_alloc));
+    agent.on_vm_object_free(Some(on_object_free));
+    agent.on_class_file_load(Some(on_class_file_load));
+    agent.on_method_entry(Some(on_method_entry));
+    agent.on_method_exit(Some(on_method_exit));
     agent.on_thread_start(Some(on_thread_start));
     agent.on_thread_end(Some(on_thread_end));
     agent.on_monitor_wait(Some(on_monitor_wait));
