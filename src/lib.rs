@@ -22,6 +22,7 @@ use util::stringify;
 use std::time::*;
 extern crate chrono;
 use chrono::Local;
+use trace::tree::*;
 
 pub mod agent;
 pub mod bytecode;
@@ -43,6 +44,7 @@ pub mod runtime;
 pub mod thread;
 pub mod util;
 pub mod version;
+pub mod trace;
 
 /*
  * TODO The functions below are essentially parts of an actual client implementation. Because this
