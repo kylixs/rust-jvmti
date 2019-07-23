@@ -5,6 +5,8 @@ extern crate time;
 extern crate toml;
 #[macro_use]
 extern crate serde_derive;
+#[macro_use] extern crate log;
+extern crate env_logger;
 
 use agent::Agent;
 use bytecode::printer::ClassfilePrinter;
@@ -23,6 +25,9 @@ use std::time::*;
 extern crate chrono;
 use chrono::Local;
 use trace::tree::*;
+use std::sync::Mutex;
+use time::Duration;
+
 
 pub mod agent;
 pub mod bytecode;
@@ -52,6 +57,15 @@ pub mod trace;
  * they will have to find a new home, eventually
  */
 
+lazy_static! {
+    static ref TREE_ARENA: Mutex<TreeArena> = Mutex::new(TreeArena::new());
+}
+
+
+//pub fn get_tree_arena() -> &'static mut TreeArena {
+//    &mut TREE_ARENA.lock().unwrap()
+//}
+
 fn nowTime() -> String {
     let date = Local::now();
     return date.format("%Y-%m-%d %H:%M:%S.%6f").to_string();
@@ -65,7 +79,8 @@ fn on_method_entry(event: MethodInvocationEvent) {
     };
 
     if !shall_record {
-        println!("[{}] [{}] method_entry [{}.{}.{}]", nowTime(), event.thread.name, event.class_sig.package, event.class_sig.name, event.method_sig.name);
+        TREE_ARENA.lock().unwrap().begin_call(&event.thread, &event.class_sig.package, &event.class_sig.name, &event.method_sig.name);
+        //println!("[{}] [{}] method_entry [{}.{}.{}]", nowTime(), event.thread.name, event.class_sig.package, event.class_sig.name, event.method_sig.name);
     }
 
     static_context().method_enter(&event.thread.id);
@@ -74,8 +89,14 @@ fn on_method_entry(event: MethodInvocationEvent) {
 fn on_method_exit(event: MethodInvocationEvent) {
     match static_context().method_exit(&event.thread.id) {
         //Some(_) => (),
-        Some(duration) => println!("[{}] [{}] method_exit [{}.{}.{}] after {}", nowTime(), event.thread.name, event.class_sig.package, event.class_sig.name, event.method_sig.name, duration),
-        None => println!("[{}] [{}] method_no_start [{}.{}.{}]", nowTime(), event.thread.name, event.class_sig.package, event.class_sig.name, event.method_sig.name)
+        Some(duration) => {
+            TREE_ARENA.lock().unwrap().end_call(&event.thread, &event.class_sig.package, &event.class_sig.name, &event.method_sig.name, &duration);
+            println!("[{}] [{}] method_exit [{}.{}.{}] after {}", nowTime(), event.thread.name, event.class_sig.package, event.class_sig.name, event.method_sig.name, duration)
+        },
+        None => {
+            TREE_ARENA.lock().unwrap().end_call(&event.thread, &event.class_sig.package, &event.class_sig.name, &event.method_sig.name, &Duration::microseconds(0));
+            println!("[{}] [{}] method_no_start [{}.{}.{}]", nowTime(), event.thread.name, event.class_sig.package, event.class_sig.name, event.method_sig.name)
+        }
     }
 }
 
@@ -89,7 +110,10 @@ fn on_thread_end(thread: Thread) {
     println!("[{}] [TE-{}]", nowTime(), thread.name);
 
     match static_context().thread_end(&thread.id) {
-        Some(duration) => println!("[{}] Thread {} lived {}", nowTime(), thread.name, duration),
+        Some(duration) => {
+            println!("[{}] Thread {} lived {}", nowTime(), thread.name, duration);
+            TREE_ARENA.lock().unwrap().print_call_tree(&thread);
+        },
         None => println!("[{}] Thread {} has no start", nowTime(), thread.name)
     }
 }
@@ -185,6 +209,8 @@ fn on_object_free() {
 #[no_mangle]
 #[allow(non_snake_case, unused_variables)]
 pub extern fn Agent_OnLoad(vm: JavaVMPtr, options: MutString, reserved: VoidPtr) -> ReturnValue {
+    env_logger::init();
+
     let options = Options::parse(stringify(options));
     println!("Starting up as {}", options.agent_id);
 
@@ -223,4 +249,5 @@ pub extern fn Agent_OnLoad(vm: JavaVMPtr, options: MutString, reserved: VoidPtr)
 #[no_mangle]
 #[allow(non_snake_case, unused_variables)]
 pub extern fn Agent_OnUnload(vm: JavaVMPtr) {
+    TREE_ARENA.lock().unwrap().print_all();
 }

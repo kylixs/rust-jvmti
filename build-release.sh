@@ -1,4 +1,4 @@
 #!/bin/bash
 
-cargo build --lib --release
+RUSTFLAGS=-Awarnings cargo build --lib --release
 

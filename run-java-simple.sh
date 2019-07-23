@@ -1,4 +1,6 @@
 #!/bin/bash
 
-java -agentpath:target/release/libjvmti.dylib -cp out/production/rust-jvmti/ Simple > tracelog.txt
+JAVA=$JAVA_HOME/bin/java
+$JAVA -agentpath:target/debug/libjvmti.so -cp target/classes Simple > tracelog.txt
+#$JAVA -agentpath:target/release/libjvmti.so -cp target/classes Simple > tracelog.txt
 

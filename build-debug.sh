@@ -1,4 +1,4 @@
 #!/bin/bash
 
-cargo build --lib --debug
+RUSTFLAGS=-Awarnings cargo build --lib 
 
