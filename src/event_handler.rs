@@ -189,7 +189,7 @@ unsafe extern "C" fn local_cb_vm_object_alloc(jvmti_env: *mut jvmtiEnv, jni_env:
                 },
                 Err(err) => {
                     match err {
-                        NativeError::NotAvailable => { /* we're in the wrong phase, just ignore this */ },
+                        NativeError::WrongPhase => { /* we're in the wrong phase, just ignore this */ },
                         _ => println!("Couldn't get thread info: {}", translate_error(&err))
                     }
                 }
@@ -216,7 +216,7 @@ unsafe extern "C" fn local_cb_method_entry(jvmti_env: *mut jvmtiEnv, jni_env: *m
                 },
                 Err(err) => {
                     match err {
-                        NativeError::NotAvailable => { /* we're in the wrong phase, just ignore this */ },
+                        NativeError::WrongPhase => { /* we're in the wrong phase, just ignore this */ },
                         _ => println!("Couldn't get thread info: {}", translate_error(&err))
                     }
                 }
@@ -243,7 +243,7 @@ unsafe extern "C" fn local_cb_method_exit(jvmti_env: *mut jvmtiEnv, jni_env: *mu
                 },
                 Err(err) => {
                     match err {
-                        NativeError::NotAvailable => { /* we're in the wrong phase, just ignore this */ },
+                        NativeError::WrongPhase => { /* we're in the wrong phase, just ignore this */ },
                         _ => println!("Couldn't get thread info: {}", translate_error(&err))
                     }
                 }
@@ -292,7 +292,7 @@ unsafe extern "C" fn local_cb_monitor_wait(jvmti_env: *mut jvmtiEnv, jni_env: *m
                 Ok(current_thread) => function(current_thread),
                 Err(err) => {
                     match err {
-                        NativeError::NotAvailable => { /* we're in the wrong phase, just ignore this */ },
+                        NativeError::WrongPhase => { /* we're in the wrong phase, just ignore this */ },
                         _ => println!("Couldn't get thread info: {}", translate_error(&err))
                     }
                 }
@@ -311,7 +311,7 @@ unsafe extern "C" fn local_cb_monitor_waited(jvmti_env: *mut jvmtiEnv, jni_env: 
                 Ok(current_thread) => function(current_thread),
                 Err(err) => {
                     match err {
-                        NativeError::NotAvailable => { /* we're in the wrong phase, just ignore this */ },
+                        NativeError::WrongPhase => { /* we're in the wrong phase, just ignore this */ },
                         _ => println!("Couldn't get thread info: {}", translate_error(&err))
                     }
                 }
@@ -330,7 +330,7 @@ unsafe extern "C" fn local_cb_monitor_contended_enter(jvmti_env: *mut jvmtiEnv, 
                 Ok(current_thread) => function(current_thread),
                 Err(err) => {
                     match err {
-                        NativeError::NotAvailable => { /* we're in the wrong phase, just ignore this */ },
+                        NativeError::WrongPhase => { /* we're in the wrong phase, just ignore this */ },
                         _ => println!("Couldn't get thread info: {}", translate_error(&err))
                     }
                 }
@@ -349,7 +349,7 @@ unsafe extern "C" fn local_cb_monitor_contended_entered(jvmti_env: *mut jvmtiEnv
                 Ok(current_thread) => function(current_thread),
                 Err(err) => {
                     match err {
-                        NativeError::NotAvailable => { /* we're in the wrong phase, just ignore this */ },
+                        NativeError::WrongPhase => { /* we're in the wrong phase, just ignore this */ },
                         _ => println!("Couldn't get thread info: {}", translate_error(&err))
                     }
                 }
@@ -368,7 +368,7 @@ unsafe extern "C" fn local_cb_thread_start(jvmti_env: *mut jvmtiEnv, jni_env: *m
                 Ok(current_thread) => function(current_thread),
                 Err(err) => {
                     match err {
-                        NativeError::NotAvailable => { /* we're in the wrong phase, just ignore this */ },
+                        NativeError::WrongPhase => { /* we're in the wrong phase, just ignore this */ },
                         _ => println!("Couldn't get thread info: {}", translate_error(&err))
                     }
                 }
@@ -388,7 +388,7 @@ unsafe extern "C" fn local_cb_thread_end(jvmti_env: *mut jvmtiEnv, jni_env: *mut
                 Ok(current_thread) => function(current_thread),
                 Err(err) => {
                     match err {
-                        NativeError::NotAvailable => { /* wrong phase, just ignore this */ },
+                        NativeError::WrongPhase => { /* wrong phase, just ignore this */ },
                         _ => println!("Couldn't get thread info: {}", translate_error(&err))
                     }
                 }

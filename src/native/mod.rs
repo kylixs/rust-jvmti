@@ -1862,7 +1862,7 @@ pub mod jvmti_native {
         pub fn JNI_OnLoad(vm: *mut JavaVM, reserved: *mut c_void) -> jint;
         pub fn JNI_OnUnload(vm: *mut JavaVM, reserved: *mut c_void) -> ();
         //pub fn Agent_OnLoad(vm: *mut JavaVM, options: *mut c_char, reserved: *mut c_void) -> jint;
-        pub fn Agent_OnAttach(vm: *mut JavaVM, options: *mut c_char, reserved: *mut c_void) -> jint;
+        //pub fn Agent_OnAttach(vm: *mut JavaVM, options: *mut c_char, reserved: *mut c_void) -> jint;
         //pub fn Agent_OnUnload(vm: *mut JavaVM) -> ();
     }
 }

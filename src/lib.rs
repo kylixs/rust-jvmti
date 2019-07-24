@@ -202,6 +202,7 @@ fn on_object_free() {
     println!("[{}] Object free", nowTime());
 }
 
+
 ///
 /// `Agent_OnLoad` is the actual entry point of the agent code and it is called by the
 /// Java Virtual Machine directly.
@@ -209,6 +210,7 @@ fn on_object_free() {
 #[no_mangle]
 #[allow(non_snake_case, unused_variables)]
 pub extern fn Agent_OnLoad(vm: JavaVMPtr, options: MutString, reserved: VoidPtr) -> ReturnValue {
+
     env_logger::init();
 
     let options = Options::parse(stringify(options));
@@ -220,7 +222,6 @@ pub extern fn Agent_OnLoad(vm: JavaVMPtr, options: MutString, reserved: VoidPtr)
     }
 
     let mut agent = Agent::new(vm);
-
     agent.on_garbage_collection_start(Some(on_garbage_collection_start));
     agent.on_garbage_collection_finish(Some(on_garbage_collection_finish));
     agent.on_vm_object_alloc(Some(on_object_alloc));
@@ -235,11 +236,49 @@ pub extern fn Agent_OnLoad(vm: JavaVMPtr, options: MutString, reserved: VoidPtr)
     agent.on_monitor_contended_enter(Some(on_monitor_contended_enter));
     agent.on_monitor_contended_entered(Some(on_monitor_contended_entered));
     //agent.on_class_file_load(Some(on_class_file_load));
-
     agent.update();
 
     return 0;
 }
+
+///
+/// `Agent_OnAttach` is the actual entry point of the agent code and it is called by the
+/// Java Virtual Machine directly.
+/// -- Dynamic load java agent by VirtualMachine.loadAgentPath()
+///
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+pub extern fn Agent_OnAttach(vm: JavaVMPtr, options: MutString, reserved: VoidPtr) -> ReturnValue {
+
+    env_logger::try_init();
+
+    let options = Options::parse(stringify(options));
+    println!("Starting up as {}", options.agent_id);
+
+    if let Some(config) = Config::read_config() {
+        println!("Setting configuration");
+        static_context().set_config(config);
+    }
+
+    let mut agent = Agent::new(vm);
+    agent.on_garbage_collection_start(Some(on_garbage_collection_start));
+    agent.on_garbage_collection_finish(Some(on_garbage_collection_finish));
+    agent.on_vm_object_alloc(Some(on_object_alloc));
+    agent.on_vm_object_free(Some(on_object_free));
+    agent.on_class_file_load(Some(on_class_file_load));
+    agent.on_method_entry(Some(on_method_entry));
+    agent.on_method_exit(Some(on_method_exit));
+    agent.on_thread_start(Some(on_thread_start));
+    agent.on_thread_end(Some(on_thread_end));
+    agent.on_monitor_wait(Some(on_monitor_wait));
+    agent.on_monitor_waited(Some(on_monitor_waited));
+    agent.on_monitor_contended_enter(Some(on_monitor_contended_enter));
+    agent.on_monitor_contended_entered(Some(on_monitor_contended_entered));
+    agent.update();
+
+    return 0;
+}
+
 
 ///
 /// `Agent_OnUnload` is the exit point of the agent code. It is called when the JVM has finished
