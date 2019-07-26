@@ -1,0 +1,10 @@
+@echo off
+
+set DIR=%~dp0
+set PROJECT_PATH=%DIR%\..\..
+set ATTACHER_PATH=%PROJECT_PATH%\agent-attacher\target\agent-attacher-jar-with-dependencies.jar
+set AGENT_PATH=%PROJECT_PATH%/target/release/jvmti.dll
+set AGENT_OPTIONS=trace=off,output=xxxx
+
+%JAVA_HOME%/bin/java -Xbootclasspath/a:%JAVA_HOME%/lib/tools.jar -jar %ATTACHER_PATH%  %AGENT_PATH%  %AGENT_OPTIONS%
+
