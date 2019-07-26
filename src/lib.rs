@@ -290,8 +290,6 @@ pub extern fn Agent_OnAttach(vm: JavaVMPtr, options: MutString, reserved: VoidPt
         static_context().set_config(config);
     }
 
-    TREE_ARENA.lock().unwrap().mark();
-
     if let Some(val) = options.custom_args.get("trace") {
         match val.as_ref() {
             "on" => {
@@ -302,9 +300,8 @@ pub extern fn Agent_OnAttach(vm: JavaVMPtr, options: MutString, reserved: VoidPt
             _ => {
                 println!("Shutting down JVMTI agent ..");
 
-                println!("static_context config: {:?}", static_context().config.read());
                 set_trace_enable(false);
-                println!("static_context config: {:?}", static_context().config.read());
+                //println!("static_context config: {:?}", static_context().config.read());
 
                 let mut agent = Agent::new(vm);
                 agent.shutdown();

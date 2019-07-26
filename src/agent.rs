@@ -81,10 +81,10 @@ impl Agent {
     }
 
     pub fn update(&mut self) {
-        println!("Expect capabilities: {}", caps, self.capabilities);
+        println!("Expect capabilities: {}", self.capabilities);
         match self.environment.add_capabilities(&self.capabilities) {
             Ok(caps) => {
-                println!("Update capabilities sucessful, current capabilities: {}", caps, self.capabilities);
+                println!("Update capabilities sucessful, current capabilities: {}", caps);
                 self.capabilities = caps;
             },
             Err(error) => {
