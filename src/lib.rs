@@ -80,7 +80,7 @@ fn on_method_entry(event: MethodInvocationEvent) {
 
     if !shall_record {
         TREE_ARENA.lock().unwrap().begin_call(&event.thread, &event.class_sig.package, &event.class_sig.name, &event.method_sig.name);
-        //println!("[{}] [{}] method_entry [{}.{}.{}]", nowTime(), event.thread.name, event.class_sig.package, event.class_sig.name, event.method_sig.name);
+        debug!("[{}] [{}] method_entry [{}.{}.{}]", nowTime(), event.thread.name, event.class_sig.package, event.class_sig.name, event.method_sig.name);
     }
 
     static_context().method_enter(&event.thread.id);
@@ -91,11 +91,11 @@ fn on_method_exit(event: MethodInvocationEvent) {
         //Some(_) => (),
         Some(duration) => {
             TREE_ARENA.lock().unwrap().end_call(&event.thread, &event.class_sig.package, &event.class_sig.name, &event.method_sig.name, &duration);
-            println!("[{}] [{}] method_exit [{}.{}.{}] after {}", nowTime(), event.thread.name, event.class_sig.package, event.class_sig.name, event.method_sig.name, duration)
+            debug!("[{}] [{}] method_exit [{}.{}.{}] after {}", nowTime(), event.thread.name, event.class_sig.package, event.class_sig.name, event.method_sig.name, duration)
         },
         None => {
             TREE_ARENA.lock().unwrap().end_call(&event.thread, &event.class_sig.package, &event.class_sig.name, &event.method_sig.name, &Duration::microseconds(0));
-            println!("[{}] [{}] method_no_start [{}.{}.{}]", nowTime(), event.thread.name, event.class_sig.package, event.class_sig.name, event.method_sig.name)
+            debug!("[{}] [{}] method_no_start [{}.{}.{}]", nowTime(), event.thread.name, event.class_sig.package, event.class_sig.name, event.method_sig.name)
         }
     }
 }
