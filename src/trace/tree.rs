@@ -100,6 +100,11 @@ impl TreeArena {
             thread_data.print_call_tree();
         }
     }
+
+    pub fn clear(&mut self) {
+        self.thread_trees.clear();
+        println!("clear trace data");
+    }
 }
 
 

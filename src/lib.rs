@@ -61,10 +61,18 @@ lazy_static! {
     static ref TREE_ARENA: Mutex<TreeArena> = Mutex::new(TreeArena::new());
 }
 
+static mut TRACE_ENABLE:bool = false;
 
-//pub fn get_tree_arena() -> &'static mut TreeArena {
-//    &mut TREE_ARENA.lock().unwrap()
-//}
+fn is_trace_enable() -> bool {
+    unsafe { TRACE_ENABLE }
+}
+
+fn set_trace_enable(enable:bool) {
+    static_context().set_trace_enable(enable);
+    unsafe {
+        TRACE_ENABLE = enable;
+    }
+}
 
 fn nowTime() -> String {
     let date = Local::now();
@@ -73,6 +81,9 @@ fn nowTime() -> String {
 }
 
 fn on_method_entry(event: MethodInvocationEvent) {
+    if !is_trace_enable() {
+        return;
+    }
     let shall_record = match static_context().config.read() {
         Ok(cfg) => (*cfg).entry_points.iter().any(|item| *item == format!("{}.{}.{}", event.class_sig.package, event.class_sig.name, event.method_sig.name) ), //event.class_name.as_str() == item),
         _ => false
@@ -87,6 +98,9 @@ fn on_method_entry(event: MethodInvocationEvent) {
 }
 
 fn on_method_exit(event: MethodInvocationEvent) {
+    if !is_trace_enable() {
+        return;
+    }
     match static_context().method_exit(&event.thread.id) {
         //Some(_) => (),
         Some(duration) => {
@@ -101,12 +115,18 @@ fn on_method_exit(event: MethodInvocationEvent) {
 }
 
 fn on_thread_start(thread: Thread) {
+    if !is_trace_enable() {
+        return;
+    }
     println!("[{}] [TS-{}]", nowTime(), thread.name);
 
     static_context().thread_start(&thread.id);
 }
 
 fn on_thread_end(thread: Thread) {
+    if !is_trace_enable() {
+        return;
+    }
     println!("[{}] [TE-{}]", nowTime(), thread.name);
 
     match static_context().thread_end(&thread.id) {
@@ -119,20 +139,32 @@ fn on_thread_end(thread: Thread) {
 }
 
 fn on_monitor_wait(thread: Thread) {
+    if !is_trace_enable() {
+        return;
+    }
     println!("[{}] [W1-{}]", nowTime(), thread.name);
 }
 
 fn on_monitor_waited(thread: Thread) {
+    if !is_trace_enable() {
+        return;
+    }
     println!("[{}] [W2-{}]", nowTime(), thread.name);
 }
 
 fn on_monitor_contended_enter(thread: Thread) {
+    if !is_trace_enable() {
+        return;
+    }
     println!("[{}] [C1-{}]", nowTime(), thread.name);
 
     static_context().monitor_enter(&thread.id);
 }
 
 fn on_monitor_contended_entered(thread: Thread) {
+    if !is_trace_enable() {
+        return;
+    }
     println!("[{}] [C2-{}]", nowTime(), thread.name);
 
     match static_context().monitor_entered(&thread.id) {
@@ -142,6 +174,7 @@ fn on_monitor_contended_entered(thread: Thread) {
 }
 
 fn on_class_file_load(mut event: ClassFileLoadEvent) -> Option<Vec<u8>> {
+    if !is_trace_enable() { return None; }
     let shall_transform = match static_context().config.read() {
         Ok(cfg) => (*cfg).entry_points.iter().any(|item| item.starts_with(event.class_name.as_str())), //event.class_name.as_str() == item),
         _ => false
@@ -187,18 +220,30 @@ fn on_class_file_load(mut event: ClassFileLoadEvent) -> Option<Vec<u8>> {
 }
 
 fn on_garbage_collection_start() {
+    if !is_trace_enable() {
+        return;
+    }
     println!("[{}] GC Start: {:?}", nowTime(), std::time::Instant::now());
 }
 
 fn on_garbage_collection_finish() {
+    if !is_trace_enable() {
+        return;
+    }
     println!("[{}] GC Finish: {:?}", nowTime(), std::time::Instant::now());
 }
 
 fn on_object_alloc(event: ObjectAllocationEvent) {
+    if !is_trace_enable() {
+        return;
+    }
     println!("[{}] [{}] Object allocation: (size: {})", nowTime(), event.thread.name, event.size);
 }
 
 fn on_object_free() {
+    if !is_trace_enable() {
+        return;
+    }
     println!("[{}] Object free", nowTime());
 }
 
@@ -221,22 +266,7 @@ pub extern fn Agent_OnLoad(vm: JavaVMPtr, options: MutString, reserved: VoidPtr)
         static_context().set_config(config);
     }
 
-    let mut agent = Agent::new(vm);
-    agent.on_garbage_collection_start(Some(on_garbage_collection_start));
-    agent.on_garbage_collection_finish(Some(on_garbage_collection_finish));
-    agent.on_vm_object_alloc(Some(on_object_alloc));
-    agent.on_vm_object_free(Some(on_object_free));
-    agent.on_class_file_load(Some(on_class_file_load));
-    agent.on_method_entry(Some(on_method_entry));
-    agent.on_method_exit(Some(on_method_exit));
-    agent.on_thread_start(Some(on_thread_start));
-    agent.on_thread_end(Some(on_thread_end));
-    agent.on_monitor_wait(Some(on_monitor_wait));
-    agent.on_monitor_waited(Some(on_monitor_waited));
-    agent.on_monitor_contended_enter(Some(on_monitor_contended_enter));
-    agent.on_monitor_contended_entered(Some(on_monitor_contended_entered));
-    //agent.on_class_file_load(Some(on_class_file_load));
-    agent.update();
+    init_agent(vm);
 
     return 0;
 }
@@ -253,19 +283,47 @@ pub extern fn Agent_OnAttach(vm: JavaVMPtr, options: MutString, reserved: VoidPt
     env_logger::try_init();
 
     let options = Options::parse(stringify(options));
-    println!("Starting up as {}", options.agent_id);
+    println!("Starting up as {}, options: {:?}", options.agent_id, options);
 
     if let Some(config) = Config::read_config() {
         println!("Setting configuration");
         static_context().set_config(config);
     }
 
+    TREE_ARENA.lock().unwrap().mark();
+
+    if let Some(val) = options.custom_args.get("trace") {
+        match val.as_ref() {
+            "on" => {
+                println!("Starting JVMTI agent ..");
+                set_trace_enable(true);
+                init_agent(vm);
+            },
+            _ => {
+                println!("Shutting down JVMTI agent ..");
+
+                println!("static_context config: {:?}", static_context().config.read());
+                set_trace_enable(false);
+                println!("static_context config: {:?}", static_context().config.read());
+
+                let mut agent = Agent::new(vm);
+                agent.shutdown();
+                TREE_ARENA.lock().unwrap().print_all();
+                TREE_ARENA.lock().unwrap().clear();
+            }
+        }
+    }
+
+    return 0;
+}
+
+fn init_agent(vm: JavaVMPtr) {
     let mut agent = Agent::new(vm);
     agent.on_garbage_collection_start(Some(on_garbage_collection_start));
     agent.on_garbage_collection_finish(Some(on_garbage_collection_finish));
-    agent.on_vm_object_alloc(Some(on_object_alloc));
-    agent.on_vm_object_free(Some(on_object_free));
-    agent.on_class_file_load(Some(on_class_file_load));
+    //agent.on_vm_object_alloc(Some(on_object_alloc));
+    //agent.on_vm_object_free(Some(on_object_free));
+    //agent.on_class_file_load(Some(on_class_file_load));
     agent.on_method_entry(Some(on_method_entry));
     agent.on_method_exit(Some(on_method_exit));
     agent.on_thread_start(Some(on_thread_start));
@@ -275,8 +333,6 @@ pub extern fn Agent_OnAttach(vm: JavaVMPtr, options: MutString, reserved: VoidPt
     agent.on_monitor_contended_enter(Some(on_monitor_contended_enter));
     agent.on_monitor_contended_entered(Some(on_monitor_contended_entered));
     agent.update();
-
-    return 0;
 }
 
 

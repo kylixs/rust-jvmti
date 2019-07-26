@@ -4,11 +4,12 @@ use std::fs::File;
 use std::io::{ Read };
 use std::path::Path;
 
-#[derive(Deserialize)]
+#[derive(Deserialize,Debug)]
 pub struct Config {
     pub agent_name: String,
     pub entry_points: Vec<String>,
-    pub active_classes: Vec<String>
+    pub active_classes: Vec<String>,
+    pub trace_enable: bool
 }
 
 impl Config {
@@ -40,7 +41,8 @@ impl Default for Config {
         Config {
             agent_name: String::from("default"),
             entry_points: vec![],
-            active_classes: vec![]
+            active_classes: vec![],
+            trace_enable: true
         }
     }
 }

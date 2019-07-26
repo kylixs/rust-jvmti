@@ -122,9 +122,13 @@ impl JVMTI for JVMTIEnvironment {
             let mode_i = match mode { true => 1, false => 0 };
             let sptr: JavaObject = ptr::null_mut();
 
+            let event1 = event.clone();
             match wrap_error((**self.jvmti).SetEventNotificationMode.unwrap()(self.jvmti, mode_i, event as u32, sptr)) {
                 NativeError::NoError => None,
-                err @ _ => Some(err)
+                err @ _ => {
+                    println!("set_event_notification_mode failed, event: {:?}, mode: {}, error: {:?}", event1, mode, err);
+                    Some(err)
+                }
             }
         }
     }

@@ -3,6 +3,7 @@ use std::collections::HashMap;
 ///
 /// Represents the possible program options configured from command-line arguments.
 ///
+#[derive(Debug)]
 pub struct Options {
     pub agent_id: String,
     pub custom_args: HashMap<String, String>,

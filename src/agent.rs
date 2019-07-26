@@ -51,8 +51,29 @@ impl Agent {
         self.environment.get_version_number()
     }
 
-    pub fn shutdown(&self) {
-        // TODO implement this method
+    pub fn shutdown(&mut self) {
+        //self.environment.set_event_callbacks(self.callbacks.clone());
+        self.environment.set_event_notification_mode(VMEvent::VMObjectAlloc, false);
+        self.environment.set_event_notification_mode(VMEvent::VMObjectFree, false);
+        self.environment.set_event_notification_mode(VMEvent::VMStart, false);
+        self.environment.set_event_notification_mode(VMEvent::VMInit, false);
+        self.environment.set_event_notification_mode(VMEvent::VMDeath, false);
+        self.environment.set_event_notification_mode(VMEvent::MethodEntry, false);
+        self.environment.set_event_notification_mode(VMEvent::MethodExit, false);
+        self.environment.set_event_notification_mode(VMEvent::ThreadStart, false);
+        self.environment.set_event_notification_mode(VMEvent::ThreadEnd, false);
+        self.environment.set_event_notification_mode(VMEvent::Exception, false);
+        self.environment.set_event_notification_mode(VMEvent::ExceptionCatch, false);
+        self.environment.set_event_notification_mode(VMEvent::MonitorWait, false);
+        self.environment.set_event_notification_mode(VMEvent::MonitorWaited, false);
+        self.environment.set_event_notification_mode(VMEvent::MonitorContendedEnter, false);
+        self.environment.set_event_notification_mode(VMEvent::MonitorContendedEntered, false);
+        self.environment.set_event_notification_mode(VMEvent::FieldAccess, false);
+        self.environment.set_event_notification_mode(VMEvent::FieldModification, false);
+        self.environment.set_event_notification_mode(VMEvent::GarbageCollectionStart, false);
+        self.environment.set_event_notification_mode(VMEvent::GarbageCollectionFinish, false);
+        self.environment.set_event_notification_mode(VMEvent::ClassFileLoadHook, false);
+        println!("Jvmti event tracing is stopped.")
     }
 
     pub fn destroy(&self) -> Result<(), NativeError> {
@@ -60,9 +81,10 @@ impl Agent {
     }
 
     pub fn update(&mut self) {
+        println!("Expect capabilities: {}", caps, self.capabilities);
         match self.environment.add_capabilities(&self.capabilities) {
             Ok(caps) => {
-                println!("Update capabilities sucessful, current capabilities: {}", caps);
+                println!("Update capabilities sucessful, current capabilities: {}", caps, self.capabilities);
                 self.capabilities = caps;
             },
             Err(error) => {
@@ -94,6 +116,7 @@ impl Agent {
                 self.environment.set_event_notification_mode(VMEvent::GarbageCollectionStart, self.callbacks.garbage_collection_start.is_some());
                 self.environment.set_event_notification_mode(VMEvent::GarbageCollectionFinish, self.callbacks.garbage_collection_finish.is_some());
                 self.environment.set_event_notification_mode(VMEvent::ClassFileLoadHook, self.callbacks.class_file_load_hook.is_some());
+                println!("Jvmti event tracing is started.")
             },
             Some(error) => println!("Couldn't register callbacks: {}", translate_error(&error))
         }

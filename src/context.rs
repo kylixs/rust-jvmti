@@ -45,6 +45,14 @@ impl AgentContext {
         }
     }
 
+    pub fn set_trace_enable(&self, enable: bool) {
+        self.config.write().unwrap().trace_enable = enable;
+    }
+
+    pub fn is_trace_enable(&self) -> bool {
+        self.config.read().unwrap().trace_enable
+    }
+
     pub fn thread_start(&self, thread_id: &ThreadId) {
         match self.context.write() {
             Ok(mut ctx) => {
