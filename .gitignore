@@ -13,3 +13,4 @@ old
 *.iml
 *.out
 test-data*
+tracelog*

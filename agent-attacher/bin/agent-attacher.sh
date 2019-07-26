@@ -1,5 +1,6 @@
 #!/bin/bash
 
+
 PROJECT_PATH=/opt/projects/rust-projects/rust-jvmti
 ATTACHER_PATH=$PROJECT_PATH/agent-attacher/target/agent-attacher-jar-with-dependencies.jar
 AGENT_PATH=$PROJECT_PATH/target/release/libjvmti.so
