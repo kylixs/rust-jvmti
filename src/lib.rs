@@ -27,7 +27,8 @@ use chrono::Local;
 use trace::tree::*;
 use std::sync::Mutex;
 use time::Duration;
-
+use environment::jvm::{JVMF, JVMAgent};
+use environment::jvmti::JVMTI;
 
 pub mod agent;
 pub mod bytecode;
@@ -299,6 +300,16 @@ pub extern fn Agent_OnAttach(vm: JavaVMPtr, options: MutString, reserved: VoidPt
             },
             _ => {
                 println!("Shutting down JVMTI agent ..");
+
+                let jvm_agent = JVMAgent::new(vm);
+                match jvm_agent.get_environment() {
+                    Ok(environment) => {
+                        environment.get_all_stacktraces();
+                    },
+                    Err(err) =>{
+//                        panic!("FATAL: Could not get JVMTI environment: {}", translate_error(&err))
+                    }
+                }
 
                 set_trace_enable(false);
                 //println!("static_context config: {:?}", static_context().config.read());

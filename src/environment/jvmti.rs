@@ -9,7 +9,7 @@ use super::super::thread::{ThreadId, Thread};
 use super::super::util::stringify;
 use super::super::version::VersionNumber;
 use super::super::native::{MutString, MutByteArray, JavaClass, JavaObject, JavaInstance, JavaLong, JavaThread, JVMTIEnvPtr};
-use super::super::native::jvmti_native::{Struct__jvmtiThreadInfo, jvmtiCapabilities};
+use super::super::native::jvmti_native::{Struct__jvmtiThreadInfo, jvmtiCapabilities, jint, jvmtiStackInfo, jthread, jvmtiFrameInfo};
 use std::ptr;
 
 pub trait JVMTI {
@@ -37,6 +37,8 @@ pub trait JVMTI {
     fn get_class_signature(&self, class_id: &ClassId) -> Result<ClassSignature, NativeError>;
     fn allocate(&self, len: usize) -> Result<MemoryAllocation, NativeError>;
     fn deallocate(&self);
+
+    fn get_all_stacktraces(&self) {}
 }
 
 pub struct JVMTIEnvironment {
@@ -215,5 +217,47 @@ impl JVMTI for JVMTIEnvironment {
 
     fn deallocate(&self) {
 
+    }
+
+    fn get_all_stacktraces(&self) {
+        let max_frame_count:jint = 100;
+        let mut thread_count:jint = 0;
+        let mut thread_count_ptr: *mut jint = &mut thread_count;
+        let mut stack_info_ptr: *mut jvmtiStackInfo = ptr::null_mut();
+        let mut threads_ptr : *mut jthread = ptr::null_mut();
+
+        println!("GetAllStackTraces");
+        unsafe {
+            //(**self.jvmti).GetAllThreads.unwrap()(self.jvmti, thread_count_ptr, &mut threads_ptr);
+            (**self.jvmti).GetAllStackTraces.unwrap()(self.jvmti, max_frame_count, &mut stack_info_ptr, thread_count_ptr );
+        }
+
+        let count: usize = thread_count as usize;
+        println!("thread_count: {}, count: {}", thread_count, count);
+
+        //let threads_array = unsafe { std::slice::from_raw_parts(threads_ptr, count ) };
+        let stack_info_array = unsafe { std::slice::from_raw_parts(stack_info_ptr, count ) };
+        for i in 0..count {
+            let stack_info = stack_info_array[i];
+            println!("stack_info: {}, thread: {:?}, state: {:?}", stack_info.frame_count, stack_info.thread, stack_info.state);
+            let stack_frames = unsafe { std::slice::from_raw_parts(stack_info.frame_buffer,stack_info.frame_count as usize) };
+            for n in 0..stack_info.frame_count as usize {
+                let stack_frame = stack_frames[n];
+                let mut method_name: MutString = ptr::null_mut();
+                let name_ptr: *mut MutString = &mut method_name;
+                unsafe {
+                    (**self.jvmti).GetMethodName.unwrap()(self.jvmti, stack_frame.method, name_ptr, ptr::null_mut(), ptr::null_mut());
+                }
+                let method_name = stringify(method_name);
+                println!("{}()", &method_name);
+                //TODO Deallocate method_name
+            }
+            println!("");
+        }
+
+        unsafe {
+            (**self.jvmti).Deallocate.unwrap()(self.jvmti, threads_ptr as *mut u8);
+//            (**self.jvmti).Deallocate.unwrap()(self.jvmti, stack_info_ptr as *mut u8);
+        }
     }
 }
