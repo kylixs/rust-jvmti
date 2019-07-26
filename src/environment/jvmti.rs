@@ -251,6 +251,9 @@ impl JVMTI for JVMTIEnvironment {
                 let method_name = stringify(method_name);
                 println!("{}()", &method_name);
                 //TODO Deallocate method_name
+
+                //https://blog.51cto.com/supercharles888/1587917
+                //GetMethodDeclaringClass
             }
             println!("");
         }
