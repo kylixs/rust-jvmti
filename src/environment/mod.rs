@@ -70,8 +70,8 @@ impl JVMTI for Environment {
         self.jvmti.allocate(len)
     }
 
-    fn deallocate(&self) {
-        self.jvmti.deallocate()
+    fn deallocate(&self, ptr: *mut i8) {
+        self.jvmti.deallocate(ptr)
     }
 }
 

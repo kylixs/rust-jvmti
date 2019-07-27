@@ -89,7 +89,7 @@ impl JVMTI for JVMEmulator {
 
     fn get_method_name(&self, method_id: &MethodId) -> Result<MethodSignature, NativeError> {
         match method_id.native_id as u64 {
-            0x01 => Ok(MethodSignature::new("".to_string())),
+            0x01 => Ok(MethodSignature::new("".to_string(), "".to_string(), "".to_string())),
             _ => Err(NativeError::NotImplemented)
         }
     }
@@ -104,7 +104,7 @@ impl JVMTI for JVMEmulator {
         Ok(MemoryAllocation { ptr: ::std::ptr::null_mut(), len: len })
     }
 
-    fn deallocate(&self) {
+    fn deallocate(&self, prt: *mut i8) {
 
     }
 }

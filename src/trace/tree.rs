@@ -48,13 +48,13 @@ impl TreeArena {
 //            }));
 //    }
 
-    pub fn begin_call(&mut self, thread: &Thread, package: &String, class_name: &String, method_name: &String) {
+    pub fn begin_call(&mut self, thread: &Thread, class_name: &String, method_name: &String) {
         {
             let mut n = self.lock.write().unwrap();
             *n += 1;
             match self.thread_trees.get_mut(&thread.id) {
                 Some(thread_data) => {
-                    thread_data.begin_call(&package, &class_name, &method_name);
+                    thread_data.begin_call(&class_name, &method_name);
                 },
                 None => {
                     self.thread_trees.insert(thread.id.clone(), ThreadData {
@@ -63,7 +63,7 @@ impl TreeArena {
                         top_call_stack_node: NodeId { index: 0 },
                     });
                     let thread_data = self.thread_trees.get_mut(&thread.id).unwrap();
-                    thread_data.begin_call(&package, &class_name, &method_name);
+                    thread_data.begin_call(&class_name, &method_name);
                     println!(" create call tree: [{:?}] [{}], total trees: {} ", thread.id.native_id, thread.name, self.thread_trees.len());
                     //println!(" create call tree failed: [{:?}] [{}] ", thread.id.native_id, thread.name);
                 }
@@ -71,12 +71,12 @@ impl TreeArena {
         }
     }
 
-    pub fn end_call(&mut self, thread: &Thread, package: &String, class_name: &String, method_name: &String, duration: &Duration) {
+    pub fn end_call(&mut self, thread: &Thread, class_name: &String, method_name: &String, duration: &Duration) {
         let mut n = self.lock.write().unwrap();
         *n += 1;
         match self.thread_trees.get_mut(&thread.id) {
             Some(thread_data) => {
-                thread_data.end_call(&package, &class_name, &method_name, &duration);
+                thread_data.end_call(&class_name, &method_name, &duration);
             },
             None => {}
         }
@@ -116,9 +116,9 @@ pub struct ThreadData {
 
 impl ThreadData {
 
-    pub fn begin_call(&mut self, package: &String, class_name: &String, method_name: &String) {
+    pub fn begin_call(&mut self, class_name: &String, method_name: &String) {
         //let topNode = &mut self.nodes[self.top_call_stack_node.index];
-        let call_name = TreeNode::get_node_key(package, class_name, method_name);
+        let call_name = TreeNode::get_node_key(class_name, method_name);
 
         //find exist call node
         let topNode = self.get_top_node();
@@ -133,7 +133,7 @@ impl ThreadData {
                 let next_index = self.nodes.len();
 
                 let topNode = self.get_mut_top_node();
-                let node_data = TreeNode::newCallNode(topNode, next_index, package, class_name, method_name);
+                let node_data = TreeNode::newCallNode(topNode, next_index, class_name, method_name);
                 self.top_call_stack_node = node_data.data.node_id.clone();
 
                 // Push the node into the arena
@@ -143,8 +143,8 @@ impl ThreadData {
 
     }
 
-    pub fn end_call(&mut self, package: &String, class_name: &String, method_name: &String, duration: &Duration) {
-        let call_name = TreeNode::get_node_key(package, class_name, method_name);
+    pub fn end_call(&mut self, class_name: &String, method_name: &String, duration: &Duration) {
+        let call_name = TreeNode::get_node_key(class_name, method_name);
         //let top_node = self.nodes[self.top_call_stack_node.index];
         let top_node = self.get_mut_top_node();
         if top_node.data.name == call_name {
@@ -251,8 +251,8 @@ impl TreeNode {
         }
     }
 
-    pub fn newCallNode(parentNode: &mut TreeNode, next_index: usize, package: &String, class_name: &String, method_name: &String ) -> TreeNode {
-        let name = TreeNode::get_node_key(package, class_name, method_name);
+    pub fn newCallNode(parentNode: &mut TreeNode, next_index: usize, class_name: &String, method_name: &String ) -> TreeNode {
+        let name = TreeNode::get_node_key(class_name, method_name);
 
         //call path
         let mut path = parentNode.data.path.to_string();
@@ -280,16 +280,8 @@ impl TreeNode {
 
     }
 
-    fn get_node_key(package: &String, class_name: &String, method_name: &String) -> String {
-        let mut name = String::from("");
-        if package.len() > 0 {
-            name += package.as_str();
-            name += ".";
-        }
-        name += class_name.as_str();
-        name += ".";
-        name += method_name.as_str();
-        name
+    fn get_node_key(class_name: &String, method_name: &String) -> String {
+        format!("{}.{}", class_name, method_name)
     }
 
     fn find_child(&self, call_name: &String) -> Option<&NodeId> {

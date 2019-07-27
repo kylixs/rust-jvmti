@@ -11,7 +11,14 @@ use super::super::version::VersionNumber;
 use super::super::native::{MutString, MutByteArray, JavaClass, JavaObject, JavaInstance, JavaLong, JavaThread, JVMTIEnvPtr};
 use super::super::native::jvmti_native::{Struct__jvmtiThreadInfo, jvmtiCapabilities, jint, jvmtiStackInfo, jthread, jvmtiFrameInfo};
 use std::ptr;
+use native::jvmti_native::jmethodID;
+use std::os::raw::{c_char, c_uchar};
 
+
+///
+/// JVMTI interface
+/// https://docs.oracle.com/javase/8/docs/platform/jvmti/jvmti.html
+///
 pub trait JVMTI {
 
     ///
@@ -36,7 +43,7 @@ pub trait JVMTI {
     fn get_method_name(&self, method_id: &MethodId) -> Result<MethodSignature, NativeError>;
     fn get_class_signature(&self, class_id: &ClassId) -> Result<ClassSignature, NativeError>;
     fn allocate(&self, len: usize) -> Result<MemoryAllocation, NativeError>;
-    fn deallocate(&self);
+    fn deallocate(&self, ptr: *mut i8);
 
     fn get_all_stacktraces(&self) {}
 }
@@ -143,12 +150,16 @@ impl JVMTI for JVMTIEnvironment {
             match (**self.jvmti).GetThreadInfo {
                 Some(func) => {
                     match wrap_error(func(self.jvmti, *thread_id, info_ptr)) {
-                        NativeError::NoError => Ok(Thread {
-                            id: ThreadId { native_id: *thread_id },
-                            name: stringify((*info_ptr).name),
-                            priority: (*info_ptr).priority as u32,
-                            is_daemon: if (*info_ptr).is_daemon > 0 { true } else { false }
-                        }),
+                        NativeError::NoError => {
+                            let thread = Thread {
+                                id: ThreadId { native_id: *thread_id },
+                                name: stringify((*info_ptr).name),
+                                priority: (*info_ptr).priority as u32,
+                                is_daemon: if (*info_ptr).is_daemon > 0 { true } else { false }
+                            };
+                            self.deallocate(info.name);
+                            Ok(thread)
+                        },
                         err@_ => Err(err)
                     }
                 },
@@ -182,7 +193,13 @@ impl JVMTI for JVMTIEnvironment {
 
         unsafe {
             match wrap_error((**self.jvmti).GetMethodName.unwrap()(self.jvmti, method_id.native_id, method_ptr, signature_ptr, generic_sig_ptr)) {
-                NativeError::NoError => Ok(MethodSignature::new(stringify(*method_ptr))),
+                NativeError::NoError => {
+                    let method_signature = MethodSignature::new(stringify(*method_ptr), stringify(*signature_ptr), stringify(*generic_sig_ptr));
+                    self.deallocate(method_name);
+                    self.deallocate(signature);
+                    self.deallocate(generic_sig);
+                    Ok(method_signature)
+                },
                 err @ _ => Err(err)
             }
         }
@@ -190,13 +207,18 @@ impl JVMTI for JVMTIEnvironment {
 
     fn get_class_signature(&self, class_id: &ClassId) -> Result<ClassSignature, NativeError> {
         unsafe {
-            let mut native_sig: MutString = ptr::null_mut();
             let mut sig: MutString = ptr::null_mut();
+            let mut generic: MutString = ptr::null_mut();
             let p1: *mut MutString = &mut sig;
-            let p2: *mut MutString = &mut native_sig;
+            let p2: *mut MutString = &mut generic;
 
             match wrap_error((**self.jvmti).GetClassSignature.unwrap()(self.jvmti, class_id.native_id, p1, p2)) {
-                NativeError::NoError => Ok(ClassSignature::new(&JavaType::parse(&stringify(sig)).unwrap())),
+                NativeError::NoError => {
+                    let class_signature = ClassSignature::new(&JavaType::parse(&stringify(sig)).unwrap(), stringify(generic));
+                    self.deallocate(sig);
+                    self.deallocate(generic);
+                    Ok(class_signature)
+                },
                 err @ _ => Err(err)
             }
         }
@@ -215,21 +237,22 @@ impl JVMTI for JVMTIEnvironment {
         }
     }
 
-    fn deallocate(&self) {
-
+    fn deallocate(&self, ptr: *mut i8) {
+        unsafe {
+            (**self.jvmti).Deallocate.unwrap()(self.jvmti, ptr as *mut c_uchar);
+        }
     }
 
     fn get_all_stacktraces(&self) {
         let max_frame_count:jint = 100;
         let mut thread_count:jint = 0;
-        let mut thread_count_ptr: *mut jint = &mut thread_count;
         let mut stack_info_ptr: *mut jvmtiStackInfo = ptr::null_mut();
-        let mut threads_ptr : *mut jthread = ptr::null_mut();
+        //let mut threads_ptr : *mut jthread = ptr::null_mut();
 
         println!("GetAllStackTraces");
         unsafe {
-            //(**self.jvmti).GetAllThreads.unwrap()(self.jvmti, thread_count_ptr, &mut threads_ptr);
-            (**self.jvmti).GetAllStackTraces.unwrap()(self.jvmti, max_frame_count, &mut stack_info_ptr, thread_count_ptr );
+            //(**self.jvmti).GetAllThreads.unwrap()(self.jvmti, &mut thread_count, &mut threads_ptr);
+            (**self.jvmti).GetAllStackTraces.unwrap()(self.jvmti, max_frame_count, &mut stack_info_ptr, &mut thread_count );
         }
 
         let count: usize = thread_count as usize;
@@ -239,28 +262,25 @@ impl JVMTI for JVMTIEnvironment {
         let stack_info_array = unsafe { std::slice::from_raw_parts(stack_info_ptr, count ) };
         for i in 0..count {
             let stack_info = stack_info_array[i];
-            println!("stack_info: {}, thread: {:?}, state: {:?}", stack_info.frame_count, stack_info.thread, stack_info.state);
+            println!("stack_info: {}, thread: {:?}, state: {:?}", (i+1), stack_info.thread, stack_info.state);
             let stack_frames = unsafe { std::slice::from_raw_parts(stack_info.frame_buffer,stack_info.frame_count as usize) };
             for n in 0..stack_info.frame_count as usize {
                 let stack_frame = stack_frames[n];
-                let mut method_name: MutString = ptr::null_mut();
-                let name_ptr: *mut MutString = &mut method_name;
-                unsafe {
-                    (**self.jvmti).GetMethodName.unwrap()(self.jvmti, stack_frame.method, name_ptr, ptr::null_mut(), ptr::null_mut());
-                }
-                let method_name = stringify(method_name);
-                println!("{}()", &method_name);
-                //TODO Deallocate method_name
+                let method_id = MethodId { native_id : stack_frame.method };
+                let method = self.get_method_name(&method_id).unwrap();
 
                 //https://blog.51cto.com/supercharles888/1587917
                 //GetMethodDeclaringClass
+
+                let class_id = self.get_method_declaring_class(&method_id).unwrap();
+                let class = self.get_class_signature(&class_id).unwrap();
+
+                println!("{}.{}()", &class.name, &method.name);
             }
             println!("");
         }
 
-        unsafe {
-            (**self.jvmti).Deallocate.unwrap()(self.jvmti, threads_ptr as *mut u8);
-//            (**self.jvmti).Deallocate.unwrap()(self.jvmti, stack_info_ptr as *mut u8);
-        }
+        //self.deallocate(threads_ptr);
+        self.deallocate(stack_info_ptr as *mut i8);
     }
 }

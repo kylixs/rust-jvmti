@@ -82,13 +82,14 @@ pub struct ClassId {
 }
 
 pub struct ClassSignature {
-    pub package: String,
-    pub name: String
+    pub package: String, // eq Class.getPackage() : java.lang
+    pub name: String, //eq Class.getName() : java.lang.String
+    pub generic: String
 }
 
 impl ClassSignature {
 
-    pub fn new(java_type: &JavaType) -> ClassSignature {
+    pub fn new(java_type: &JavaType, raw_generic: String) -> ClassSignature {
         let str = JavaType::to_string(java_type);
         match str.rfind('.') {
             Some(idx) => {
@@ -96,16 +97,17 @@ impl ClassSignature {
 
                 ClassSignature {
                     package: pkg.trim_right_matches(".").to_string(),
-                    name: name.to_string()
+                    name: str.to_string(),
+                    generic: raw_generic
                 }
             },
-            None => ClassSignature { package: "".to_string(), name: str.to_string() }
+            None => ClassSignature { package: "".to_string(), name: str.to_string(), generic: raw_generic }
 
         }
     }
 
     pub fn to_string(&self) -> String {
-        format!("{}.{}", self.package, self.name)
+        self.name.to_string()
     }
 }
 
@@ -121,7 +123,7 @@ impl Class {
 
     /// Constructs a new Class instance.
     pub fn new<'a>(id: ClassId, signature: JavaType<'a>) -> Class {
-        Class { id: id, signature: ClassSignature::new(&signature) }
+        Class { id: id, signature: ClassSignature::new(&signature, "".to_string()) }
     }
 
     /// Returns the readable name of this class

@@ -86,13 +86,13 @@ fn on_method_entry(event: MethodInvocationEvent) {
         return;
     }
     let shall_record = match static_context().config.read() {
-        Ok(cfg) => (*cfg).entry_points.iter().any(|item| *item == format!("{}.{}.{}", event.class_sig.package, event.class_sig.name, event.method_sig.name) ), //event.class_name.as_str() == item),
+        Ok(cfg) => (*cfg).entry_points.iter().any(|item| *item == format!("{}.{}", event.class_sig.name, event.method_sig.name) ), //event.class_name.as_str() == item),
         _ => false
     };
 
     if !shall_record {
-        TREE_ARENA.lock().unwrap().begin_call(&event.thread, &event.class_sig.package, &event.class_sig.name, &event.method_sig.name);
-        debug!("[{}] [{}] method_entry [{}.{}.{}]", nowTime(), event.thread.name, event.class_sig.package, event.class_sig.name, event.method_sig.name);
+        TREE_ARENA.lock().unwrap().begin_call(&event.thread, &event.class_sig.name, &event.method_sig.name);
+        debug!("[{}] [{}] method_entry [{}.{}]", nowTime(), event.thread.name, event.class_sig.name, event.method_sig.name);
     }
 
     static_context().method_enter(&event.thread.id);
@@ -105,12 +105,12 @@ fn on_method_exit(event: MethodInvocationEvent) {
     match static_context().method_exit(&event.thread.id) {
         //Some(_) => (),
         Some(duration) => {
-            TREE_ARENA.lock().unwrap().end_call(&event.thread, &event.class_sig.package, &event.class_sig.name, &event.method_sig.name, &duration);
-            debug!("[{}] [{}] method_exit [{}.{}.{}] after {}", nowTime(), event.thread.name, event.class_sig.package, event.class_sig.name, event.method_sig.name, duration)
+            TREE_ARENA.lock().unwrap().end_call(&event.thread, &event.class_sig.name, &event.method_sig.name, &duration);
+            debug!("[{}] [{}] method_exit [{}.{}] after {}", nowTime(), event.thread.name, event.class_sig.name, event.method_sig.name, duration)
         },
         None => {
-            TREE_ARENA.lock().unwrap().end_call(&event.thread, &event.class_sig.package, &event.class_sig.name, &event.method_sig.name, &Duration::microseconds(0));
-            debug!("[{}] [{}] method_no_start [{}.{}.{}]", nowTime(), event.thread.name, event.class_sig.package, event.class_sig.name, event.method_sig.name)
+            TREE_ARENA.lock().unwrap().end_call(&event.thread, &event.class_sig.name, &event.method_sig.name, &Duration::microseconds(0));
+            debug!("[{}] [{}] method_no_start [{}.{}]", nowTime(), event.thread.name, event.class_sig.name, event.method_sig.name)
         }
     }
 }
