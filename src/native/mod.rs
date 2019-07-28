@@ -29,6 +29,7 @@ pub type JavaThread = jvmti_native::jthread;
 pub type JavaClass = jvmti_native::jclass;
 pub type JavaMethod = jvmti_native::jmethodID;
 pub type JavaLong = jvmti_native::jlong;
+pub type JavaInt = jvmti_native::jint;
 pub type TagId = jvmti_native::jlong;
 pub type JavaVersionNumber = jvmti_native::jint;
 

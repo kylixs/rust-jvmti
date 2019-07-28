@@ -95,7 +95,7 @@ fn on_method_entry(event: MethodInvocationEvent) {
         debug!("[{}] [{}] method_entry [{}.{}]", nowTime(), event.thread.name, event.class_sig.name, event.method_sig.name);
     }
 
-    static_context().method_enter(&event.thread.id);
+//    static_context().method_enter(&event.thread.id);
 }
 
 fn on_method_exit(event: MethodInvocationEvent) {
@@ -267,7 +267,10 @@ pub extern fn Agent_OnLoad(vm: JavaVMPtr, options: MutString, reserved: VoidPtr)
         static_context().set_config(config);
     }
 
-    init_agent(vm);
+    set_trace_enable(false);
+
+    let mut agent = Agent::new(vm);
+    init_agent(&mut agent);
 
     return 0;
 }
@@ -291,31 +294,25 @@ pub extern fn Agent_OnAttach(vm: JavaVMPtr, options: MutString, reserved: VoidPt
         static_context().set_config(config);
     }
 
+    let mut agent = Agent::new(vm);
+    init_agent(&mut agent);
+
     if let Some(val) = options.custom_args.get("trace") {
         match val.as_ref() {
             "on" => {
                 println!("Starting JVMTI agent ..");
                 set_trace_enable(true);
-                init_agent(vm);
             },
             _ => {
                 println!("Shutting down JVMTI agent ..");
-
-                let jvm_agent = JVMAgent::new(vm);
-                match jvm_agent.get_environment() {
-                    Ok(environment) => {
-                        environment.get_all_stacktraces();
-                    },
-                    Err(err) =>{
-//                        panic!("FATAL: Could not get JVMTI environment: {}", translate_error(&err))
-                    }
-                }
-
                 set_trace_enable(false);
-                //println!("static_context config: {:?}", static_context().config.read());
 
-                let mut agent = Agent::new(vm);
-                agent.shutdown();
+                let jvmti = &agent.environment;
+                let caps = jvmti.get_capabilities();
+                println!("caps: {}", caps);
+                jvmti.get_all_stacktraces();
+
+
                 TREE_ARENA.lock().unwrap().print_all();
                 TREE_ARENA.lock().unwrap().clear();
             }
@@ -325,15 +322,22 @@ pub extern fn Agent_OnAttach(vm: JavaVMPtr, options: MutString, reserved: VoidPt
     return 0;
 }
 
-fn init_agent(vm: JavaVMPtr) {
-    let mut agent = Agent::new(vm);
+fn init_agent(agent: &mut Agent) {
+    agent.capabilities.can_get_thread_cpu_time = true;
+    agent.capabilities.can_get_current_thread_cpu_time = true;
+    //agent.capabilities.can_access_local_variables = true;
+    agent.capabilities.can_get_line_numbers = true;
+    agent.capabilities.can_get_source_file_name = true;
+    agent.capabilities.can_generate_all_class_hook_events = true;
+    agent.capabilities.can_get_bytecodes = true;
+
     agent.on_garbage_collection_start(Some(on_garbage_collection_start));
     agent.on_garbage_collection_finish(Some(on_garbage_collection_finish));
     //agent.on_vm_object_alloc(Some(on_object_alloc));
     //agent.on_vm_object_free(Some(on_object_free));
     //agent.on_class_file_load(Some(on_class_file_load));
-    agent.on_method_entry(Some(on_method_entry));
-    agent.on_method_exit(Some(on_method_exit));
+//    agent.on_method_entry(Some(on_method_entry));
+//    agent.on_method_exit(Some(on_method_exit));
     agent.on_thread_start(Some(on_thread_start));
     agent.on_thread_end(Some(on_thread_end));
     agent.on_monitor_wait(Some(on_monitor_wait));

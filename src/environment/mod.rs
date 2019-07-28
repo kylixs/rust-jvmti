@@ -42,6 +42,10 @@ impl JVMTI for Environment {
         self.jvmti.get_capabilities()
     }
 
+    fn get_potential_capabilities(&self) -> Capabilities {
+        self.jvmti.get_potential_capabilities()
+    }
+
     fn set_event_callbacks(&mut self, callbacks: EventCallbacks) -> Option<NativeError> {
         self.jvmti.set_event_callbacks(callbacks)
     }

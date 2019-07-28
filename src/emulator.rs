@@ -64,6 +64,10 @@ impl JVMTI for JVMEmulator {
         self.capabilities.clone()
     }
 
+    fn get_potential_capabilities(&self) -> Capabilities {
+        self.capabilities.clone()
+    }
+
     fn set_event_callbacks(&mut self, callbacks: EventCallbacks) -> Option<NativeError> {
         self.callbacks = callbacks;
 

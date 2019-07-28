@@ -8,11 +8,12 @@ use super::super::method::{MethodId, MethodSignature};
 use super::super::thread::{ThreadId, Thread};
 use super::super::util::stringify;
 use super::super::version::VersionNumber;
-use super::super::native::{MutString, MutByteArray, JavaClass, JavaObject, JavaInstance, JavaLong, JavaThread, JVMTIEnvPtr};
-use super::super::native::jvmti_native::{Struct__jvmtiThreadInfo, jvmtiCapabilities, jint, jvmtiStackInfo, jthread, jvmtiFrameInfo};
+use super::super::native::{MutString, MutByteArray, JavaClass, JavaObject, JavaInstance, JavaLong, JavaThread, JVMTIEnvPtr, JavaInt};
+use super::super::native::jvmti_native::{Struct__jvmtiThreadInfo, jvmtiCapabilities, jint, jvmtiStackInfo, jthread, jvmtiFrameInfo, jlong, jvmtiTimerInfo};
 use std::ptr;
-use native::jvmti_native::jmethodID;
+use native::jvmti_native::*;
 use std::os::raw::{c_char, c_uchar};
+use native::JavaMethod;
 
 
 ///
@@ -30,6 +31,7 @@ pub trait JVMTI {
     /// Some virtual machines may allow a limited set of capabilities to be added in the live phase.
     fn add_capabilities(&mut self, new_capabilities: &Capabilities) -> Result<Capabilities, NativeError>;
     fn get_capabilities(&self) -> Capabilities;
+    fn get_potential_capabilities(&self) -> Capabilities;
     /// Set the functions to be called for each event. The callbacks are specified by supplying a
     /// replacement function table. The function table is copied--changes to the local copy of the
     /// table have no effect. This is an atomic action, all callbacks are set at once. No events
@@ -46,6 +48,9 @@ pub trait JVMTI {
     fn deallocate(&self, ptr: *mut i8);
 
     fn get_all_stacktraces(&self) {}
+    fn get_all_threads(&self) -> Result<Vec<ThreadId>, NativeError> { Err(NativeError::NotImplemented) }
+    fn get_thread_cpu_time(&self, thread_id: JavaThread) -> Result<JavaLong, NativeError> { Err(NativeError::NotImplemented) }
+    fn get_thread_cpu_timer_info(&self) -> Result<jvmtiTimerInfo, NativeError> { Err(NativeError::NotImplemented) }
 }
 
 pub struct JVMTIEnvironment {
@@ -90,6 +95,18 @@ impl JVMTI for JVMTIEnvironment {
             {
                 let cap_ptr = &mut native_caps;
                 (**self.jvmti).GetCapabilities.unwrap()(self.jvmti, cap_ptr);
+            }
+            Capabilities::from_native(&native_caps)
+        }
+    }
+
+    fn get_potential_capabilities(&self) -> Capabilities {
+        unsafe {
+            let caps = Capabilities::new();
+            let mut native_caps = caps.to_native();
+            {
+                let cap_ptr = &mut native_caps;
+                (**self.jvmti).GetPotentialCapabilities.unwrap()(self.jvmti, cap_ptr);
             }
             Capabilities::from_native(&native_caps)
         }
@@ -251,36 +268,119 @@ impl JVMTI for JVMTIEnvironment {
 
         println!("GetAllStackTraces");
         unsafe {
-            //(**self.jvmti).GetAllThreads.unwrap()(self.jvmti, &mut thread_count, &mut threads_ptr);
-            (**self.jvmti).GetAllStackTraces.unwrap()(self.jvmti, max_frame_count, &mut stack_info_ptr, &mut thread_count );
-        }
+            match wrap_error((**self.jvmti).GetAllStackTraces.unwrap()(self.jvmti, max_frame_count, &mut stack_info_ptr, &mut thread_count )){
+                NativeError::NoError => {
+                    let count: usize = thread_count as usize;
+                    println!("thread_count: {}, count: {}", thread_count, count);
 
-        let count: usize = thread_count as usize;
-        println!("thread_count: {}, count: {}", thread_count, count);
+                    let stack_info_array = unsafe { std::slice::from_raw_parts(stack_info_ptr, count ) };
+                    for i in 0..count {
+                        let stack_info = stack_info_array[i];
+                        println!("stack_info: {}, thread: {:?}, state: {:?}", (i+1), stack_info.thread, stack_info.state);
 
-        //let threads_array = unsafe { std::slice::from_raw_parts(threads_ptr, count ) };
-        let stack_info_array = unsafe { std::slice::from_raw_parts(stack_info_ptr, count ) };
-        for i in 0..count {
-            let stack_info = stack_info_array[i];
-            println!("stack_info: {}, thread: {:?}, state: {:?}", (i+1), stack_info.thread, stack_info.state);
-            let stack_frames = unsafe { std::slice::from_raw_parts(stack_info.frame_buffer,stack_info.frame_count as usize) };
-            for n in 0..stack_info.frame_count as usize {
-                let stack_frame = stack_frames[n];
-                let method_id = MethodId { native_id : stack_frame.method };
-                let method = self.get_method_name(&method_id).unwrap();
+                        let mut cpu_time = -1;
+                        match self.get_thread_cpu_time(stack_info.thread) {
+                            Ok(t) => { cpu_time = t },
+                            Err(err) => {
+                                println!("get_thread_cpu_time error: {:?}", err)
+                            }
+                        }
 
-                //https://blog.51cto.com/supercharles888/1587917
-                //GetMethodDeclaringClass
+                        if let Ok(thread_info) = self.get_thread_info(&stack_info.thread) {
+                            println!("Thread [{:?}] {}: (state = {:?}, cpu_time = {}) ", stack_info.thread, thread_info.name, stack_info.state, cpu_time );
+                        }else {
+                            println!("Thread [{:?}] UNKNOWN: (state = UNKNOWN, cpu_time = {}) ", stack_info.thread, cpu_time);
+                        }
 
-                let class_id = self.get_method_declaring_class(&method_id).unwrap();
-                let class = self.get_class_signature(&class_id).unwrap();
+                        let stack_frames = unsafe { std::slice::from_raw_parts(stack_info.frame_buffer,stack_info.frame_count as usize) };
+                        for n in 0..stack_info.frame_count as usize {
+                            let stack_frame = stack_frames[n];
+                            let method_id = MethodId { native_id : stack_frame.method };
+                            let method = self.get_method_name(&method_id).unwrap();
 
-                println!("{}.{}()", &class.name, &method.name);
+                            //https://blog.51cto.com/supercharles888/1587917
+                            //GetMethodDeclaringClass
+
+                            let class_id = self.get_method_declaring_class(&method_id).unwrap();
+                            let class = self.get_class_signature(&class_id).unwrap();
+
+                            println!("{}.{}()", &class.name, &method.name);
+                        }
+                        println!("");
+                    }
+
+                    self.deallocate(stack_info_ptr as *mut i8);
+                },
+                err@ _ => {
+                    println!("GetAllStackTraces error: {:?}", err)
+                    //Err(err)
+                }
             }
-            println!("");
+        }
+    }
+
+    fn get_all_threads(&self) -> Result<Vec<ThreadId>, NativeError> {
+        let mut thread_count:jint = 0;
+        let mut threads_ptr : *mut jthread = ptr::null_mut();
+
+        println!("GetAllThreads");
+        unsafe {
+            match wrap_error((**self.jvmti).GetAllThreads.unwrap()(self.jvmti, &mut thread_count, &mut threads_ptr)){
+                NativeError::NoError => {
+                    let mut threads = vec![];
+
+                    let threads_array = unsafe { std::slice::from_raw_parts(threads_ptr, thread_count as usize ) };
+                    for thr in threads_array {
+                        threads.push(ThreadId{ native_id: *thr })
+                    }
+
+                    self.deallocate(threads_ptr as *mut i8);
+                    Ok(threads)
+                },
+                err@ _ => Err(err)
+            }
+        }
+    }
+
+    fn get_thread_cpu_time(&self, thread_id: JavaThread) -> Result<JavaLong, NativeError> {
+        let mut nanos: JavaLong = 0;
+        unsafe {
+            match wrap_error((**self.jvmti).GetThreadCpuTime.unwrap()(self.jvmti, thread_id, &mut nanos)){
+                NativeError::NoError => Ok(nanos),
+                err @ _ => Err(err)
+            }
+        }
+    }
+
+    //jvmtiError GetThreadCpuTimerInfo(jvmtiEnv* env, jvmtiTimerInfo* info_ptr)
+    fn get_thread_cpu_timer_info(&self) -> Result<jvmtiTimerInfo, NativeError> {
+        let mut timerInfo = jvmtiTimerInfo{
+            max_value: 0,
+            may_skip_forward: 0,
+            may_skip_backward: 0,
+            kind: JVMTI_TIMER_TOTAL_CPU,
+            reserved1: 0,
+            reserved2: 0
+        };
+
+        unsafe {
+            match wrap_error((**self.jvmti).GetThreadCpuTimerInfo.unwrap()(self.jvmti, &mut timerInfo)){
+                NativeError::NoError => Ok(timerInfo),
+                err @ _ => Err(err)
+            }
         }
 
-        //self.deallocate(threads_ptr);
-        self.deallocate(stack_info_ptr as *mut i8);
     }
+}
+
+
+pub struct JavaStackTrace {
+    pub thread: JavaThread,
+    pub state: JavaInt,
+    pub frame_buffer: Vec<JavaStackFrame>
+}
+
+pub struct JavaStackFrame {
+    pub method: JavaMethod,
+    pub location: JavaLong,
 }

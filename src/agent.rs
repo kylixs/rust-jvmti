@@ -12,7 +12,7 @@ pub struct Agent {
     jvm: Box<JVMF>,
     pub capabilities: Capabilities,
     callbacks: EventCallbacks,
-    environment: Box<JVMTI>
+    pub environment: Box<JVMTI>
 }
 
 impl Agent {
@@ -81,6 +81,11 @@ impl Agent {
     }
 
     pub fn update(&mut self) {
+
+        //TODO intersection of potentail_caps and target caps
+        let potentail_caps = self.environment.get_potential_capabilities();
+        println!("Potentail capabilities: {}", potentail_caps);
+
         println!("Expect capabilities: {}", self.capabilities);
         match self.environment.add_capabilities(&self.capabilities) {
             Ok(caps) => {
