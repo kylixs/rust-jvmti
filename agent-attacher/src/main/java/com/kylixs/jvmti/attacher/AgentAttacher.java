@@ -48,22 +48,25 @@ public class AgentAttacher {
     }
 
     public static void main(String[] args) throws Exception {
-        if(args.length < 1) {
+        if(args.length < 2) {
             AnsiLog.info("JVMTI Agent Attacher");
             AnsiLog.info("Usages:");
-            AnsiLog.info(" ./agent-attacher.sh </path/libjvmti.so> [options] ");
+            AnsiLog.info(" ./agent-attacher.sh </path/libjvmti.so> <options> [pid] ");
             return;
         }
         String agentPath = args[0];
-        String agentOptions = "";
-        if(args.length > 1) {
-            agentOptions = args[1];
+        String agentOptions = args[1];
+        int targetPid = -1;
+        if(args.length > 2) {
+            targetPid = Integer.parseInt(args[2]);
         }
         AnsiLog.info("agentPath: {}", agentPath);
         AnsiLog.info("options: {}", agentOptions);
 
-        boolean verbose = false;
-        int targetPid = ProcessUtils.select(verbose, 0);
+        if(targetPid == -1) {
+            boolean verbose = false;
+            targetPid = ProcessUtils.select(verbose, 0);
+        }
         if(targetPid > 0){
             attachAgent(targetPid+"", agentPath, agentOptions);
         }

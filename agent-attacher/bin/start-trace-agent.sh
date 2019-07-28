@@ -11,7 +11,7 @@ fi
 
 ATTACHER_PATH=$PROJECT_PATH/target/agent-attacher-jar-with-dependencies.jar
 AGENT_PATH=$PROJECT_PATH/../target/release/libjvmti$LIB_SUFFIX
-AGENT_OPTS=trace=sample
+AGENT_OPTS=trace=on
 
 if [[ "$JAVA_HOME" == ""  ]];then
   echo "Required system env: JAVA_HOME"
