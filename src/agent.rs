@@ -46,6 +46,16 @@ impl Agent {
         }
     }
 
+    pub fn new_from_env(vm: JavaVMPtr, env: Box<JVMTI>) -> Agent {
+        let jvm_agent = JVMAgent::new(vm);
+        Agent {
+            jvm: Box::new(jvm_agent),
+            capabilities: Capabilities::new(),
+            callbacks: EventCallbacks::new(),
+            environment: env
+        }
+    }
+
     /// Return JVMTI version being used
     pub fn get_version(&self) -> VersionNumber {
         self.environment.get_version_number()

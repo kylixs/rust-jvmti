@@ -15,7 +15,7 @@ use bytecode::io::ClassWriter;
 use config::Config;
 use context::static_context;
 use instrumentation::asm::transformer::Transformer;
-use native::{JavaVMPtr, MutString, VoidPtr, ReturnValue};
+use native::{JavaVMPtr, MutString, VoidPtr, ReturnValue, JVMTIEnvPtr};
 use options::Options;
 use runtime::*;
 use std::io::Cursor;
@@ -28,7 +28,10 @@ use trace::tree::*;
 use std::sync::Mutex;
 use time::Duration;
 use environment::jvm::{JVMF, JVMAgent};
-use environment::jvmti::JVMTI;
+use environment::jvmti::{JVMTI, JVMTIEnvironment};
+use libc::c_void;
+use std::ptr;
+use native::jvmti_native::JVMTI_VERSION;
 
 pub mod agent;
 pub mod bytecode;
@@ -294,27 +297,84 @@ pub extern fn Agent_OnAttach(vm: JavaVMPtr, options: MutString, reserved: VoidPt
         static_context().set_config(config);
     }
 
-    let mut agent = Agent::new(vm);
-    init_agent(&mut agent);
 
     if let Some(val) = options.custom_args.get("trace") {
         match val.as_ref() {
             "on" => {
                 println!("Starting JVMTI agent ..");
                 set_trace_enable(true);
+
+//                unsafe {
+//                    println!("vm: {:?}", vm);
+//                    println!("*vm: {:?}", (*vm));
+//                    println!("GetEnv: {:?}", (**vm).GetEnv);
+//                    (**vm).GetEnv.unwrap();
+//                    println!("===========")
+//                }
+
+
+
+//                let mut agent = Agent::new(vm);
+//                init_agent(&mut agent);
+//                //let xx = agent.environment.as_mut();
+//                let jvmti_ptr = unsafe{std::mem::transmute::<&mut JVMTI, u128>(agent.environment.as_mut())}; //*const JVMTIEnvironment
+//                //let jvmti_ptr = jvmti_ptr as usize;
+
+
+                let vm_ptr = vm as usize;
+                //let handle =
+                std::thread::spawn(move ||{
+                    let vm = vm_ptr as JavaVMPtr;
+//
+//                    unsafe {
+//                        println!("vm: {:?}", vm);
+//                        println!("*vm: {:?}", (*vm));
+//                        println!("GetEnv: {:?}", (**vm).GetEnv);
+//                        (**vm).GetEnv.unwrap();
+//                    }
+
+                    println!("AttachCurrentThread ..");
+                    let env = unsafe {
+                        let mut void_ptr: *mut c_void = std::ptr::null_mut() as *mut c_void;
+                        let penv_ptr: *mut *mut c_void = &mut void_ptr as *mut *mut c_void;
+                        let result = error::wrap_error((**vm).AttachCurrentThread.unwrap()(vm, penv_ptr, std::ptr::null_mut()) as u32);
+                        match result {
+                            error::NativeError::NoError => {
+                                let env_ptr: JVMTIEnvPtr = *penv_ptr as JVMTIEnvPtr;
+                                let env = JVMTIEnvironment::new(env_ptr);
+                                Result::Ok(Box::new(env))
+                            },
+                            err @ _ => Result::Err(error::wrap_error(err as u32))
+                        }
+                    };
+
+
+                    println!("Create Agent ..");
+                    let mut agent = Agent::new_from_env(vm, env.unwrap());
+                    init_agent(&mut agent);
+                    let jvmti = &agent.environment;
+
+//                    let jvmti = unsafe { &*(jvmti_ptr as *mut JVMTIEnvironment) };
+                    jvmti.get_all_stacktraces();
+                });
+
+                //handle.join();
+
             },
             _ => {
                 println!("Shutting down JVMTI agent ..");
                 set_trace_enable(false);
 
-                let jvmti = &agent.environment;
-                let caps = jvmti.get_capabilities();
-                println!("caps: {}", caps);
-                jvmti.get_all_stacktraces();
+//                let mut agent = Agent::new(vm);
+//                init_agent(&mut agent);
+//                let jvmti = &agent.environment;
+//                let caps = jvmti.get_capabilities();
+//                println!("caps: {}", caps);
+//                jvmti.get_all_stacktraces();
 
 
-                TREE_ARENA.lock().unwrap().print_all();
-                TREE_ARENA.lock().unwrap().clear();
+                //TREE_ARENA.lock().unwrap().print_all();
+                //TREE_ARENA.lock().unwrap().clear();
             }
         }
     }

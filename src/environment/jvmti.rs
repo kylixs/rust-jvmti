@@ -64,6 +64,8 @@ impl JVMTIEnvironment {
     }
 }
 
+unsafe impl std::marker::Send for JVMTIEnvironment { }
+
 impl JVMTI for JVMTIEnvironment {
 
     fn get_version_number(&self) -> VersionNumber {
