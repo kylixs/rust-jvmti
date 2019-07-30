@@ -11,6 +11,9 @@ fi
 
 ATTACHER_PATH=$PROJECT_PATH/target/agent-attacher-jar-with-dependencies.jar
 AGENT_PATH=$PROJECT_PATH/../target/release/libjvmti$LIB_SUFFIX
+if [["$1" == "debug"]];then
+    AGENT_PATH=$PROJECT_PATH/../target/debug/libjvmti$LIB_SUFFIX
+fi
 AGENT_OPTS=trace=on
 
 if [[ "$JAVA_HOME" == ""  ]];then
