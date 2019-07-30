@@ -25,7 +25,7 @@ use std::time::*;
 extern crate chrono;
 use chrono::Local;
 use trace::tree::*;
-use std::sync::Mutex;
+use std::sync::{Mutex,Arc,RwLock};
 use time::Duration;
 use environment::jvm::{JVMF, JVMAgent};
 use environment::jvmti::JVMTI;
@@ -60,19 +60,17 @@ pub mod trace;
 
 lazy_static! {
     static ref TREE_ARENA: Mutex<TreeArena> = Mutex::new(TreeArena::new());
+    static ref TRACE_ENABLE: Mutex<bool> = Mutex::new(false);
 }
 
-static mut TRACE_ENABLE:bool = false;
-
 fn is_trace_enable() -> bool {
-    unsafe { TRACE_ENABLE }
+    *TRACE_ENABLE.lock().unwrap()
 }
 
 fn set_trace_enable(enable:bool) {
     static_context().set_trace_enable(enable);
-    unsafe {
-        TRACE_ENABLE = enable;
-    }
+    let mut trace_enable = TRACE_ENABLE.lock().unwrap();
+    *trace_enable =  enable;
 }
 
 fn nowTime() -> String {
@@ -275,6 +273,13 @@ pub extern fn Agent_OnLoad(vm: JavaVMPtr, options: MutString, reserved: VoidPtr)
     return 0;
 }
 
+struct JavaVMPtrVo {
+    vm: JavaVMPtr
+}
+
+unsafe impl Send for JavaVMPtrVo {
+}
+
 ///
 /// `Agent_OnAttach` is the actual entry point of the agent code and it is called by the
 /// Java Virtual Machine directly.
@@ -294,29 +299,56 @@ pub extern fn Agent_OnAttach(vm: JavaVMPtr, options: MutString, reserved: VoidPt
         static_context().set_config(config);
     }
 
-    let mut agent = Agent::new(vm);
-    init_agent(&mut agent);
-
     if let Some(val) = options.custom_args.get("trace") {
         match val.as_ref() {
             "on" => {
                 println!("Starting JVMTI agent ..");
-                set_trace_enable(true);
+                if(is_trace_enable()){
+                    println!("Trace agent already running, do nothing.");
+                    return 0;
+                }
+
+//                let mut agent = Agent::new(vm);
+//                init_agent(&mut agent);
+//                let jvmti = &agent.environment;
+//                let caps = jvmti.get_capabilities();
+//                println!("caps: {}", caps);
+//                jvmti.get_all_stacktraces();
+
+                let vm_ptr = vm as usize;
+                //TODO how to pass vm or agent to thread safely?
+                let handle = std::thread::spawn( move||{
+                    println!("Trace agent is running ...");
+                    let vm = vm_ptr as JavaVMPtr;
+                    println!("create agent ..");
+                    let mut agent = Agent::new_attach(vm);
+                    println!("init_agent ..");
+                    init_agent(&mut agent);
+                    let jvmti = &agent.environment;
+
+                    set_trace_enable(true);
+                    let mut samples=0;
+                    while is_trace_enable() {
+                        samples += 1;
+                        println!("[{}] get sample: {}", nowTime(), samples);
+                        jvmti.get_all_stacktraces();
+                        println!("---------------------------------------");
+                        std::thread::sleep(std::time::Duration::from_secs(2));
+                    }
+                    set_trace_enable(false);
+                    println!("Trace agent is stopped.");
+                });
             },
             _ => {
                 println!("Shutting down JVMTI agent ..");
                 set_trace_enable(false);
 
-                let jvmti = &agent.environment;
-                let caps = jvmti.get_capabilities();
-                println!("caps: {}", caps);
-                jvmti.get_all_stacktraces();
-
-
-                TREE_ARENA.lock().unwrap().print_all();
-                TREE_ARENA.lock().unwrap().clear();
+                //TREE_ARENA.lock().unwrap().print_all();
+                //TREE_ARENA.lock().unwrap().clear();
             }
         }
+
+        println!("Attach thread is exited.");
     }
 
     return 0;
@@ -325,7 +357,7 @@ pub extern fn Agent_OnAttach(vm: JavaVMPtr, options: MutString, reserved: VoidPt
 fn init_agent(agent: &mut Agent) {
     agent.capabilities.can_get_thread_cpu_time = true;
     agent.capabilities.can_get_current_thread_cpu_time = true;
-    //agent.capabilities.can_access_local_variables = true;
+    agent.capabilities.can_access_local_variables = true;
     agent.capabilities.can_get_line_numbers = true;
     agent.capabilities.can_get_source_file_name = true;
     agent.capabilities.can_generate_all_class_hook_events = true;

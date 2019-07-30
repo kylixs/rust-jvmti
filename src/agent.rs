@@ -46,6 +46,20 @@ impl Agent {
         }
     }
 
+    pub fn new_attach(vm: JavaVMPtr) -> Agent {
+        let jvm_agent = JVMAgent::new(vm);
+
+        match jvm_agent.attach() {
+            Ok(environment) => Agent {
+                jvm: Box::new(jvm_agent),
+                capabilities: Capabilities::new(),
+                callbacks: EventCallbacks::new(),
+                environment: environment
+            },
+            Err(err) => panic!("FATAL: Could not attach thread: {}", translate_error(&err))
+        }
+    }
+
     /// Return JVMTI version being used
     pub fn get_version(&self) -> VersionNumber {
         self.environment.get_version_number()
@@ -81,12 +95,16 @@ impl Agent {
     }
 
     pub fn update(&mut self) {
+        println!("update agent ..");
 
         //TODO intersection of potentail_caps and target caps
         let potentail_caps = self.environment.get_potential_capabilities();
         println!("Potentail capabilities: {}", potentail_caps);
 
-        println!("Expect capabilities: {}", self.capabilities);
+        let demand_caps = self.capabilities.clone();
+        self.capabilities = self.capabilities.intersect(&potentail_caps);
+
+        println!("Add capabilities: {}", self.capabilities);
         match self.environment.add_capabilities(&self.capabilities) {
             Ok(caps) => {
                 println!("Update capabilities sucessful, current capabilities: {}", caps);
