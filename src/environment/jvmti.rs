@@ -47,7 +47,7 @@ pub trait JVMTI {
     fn allocate(&self, len: usize) -> Result<MemoryAllocation, NativeError>;
     fn deallocate(&self, ptr: *mut i8);
 
-    fn get_all_stacktraces(&self) {}
+    fn get_all_stacktraces(&self) -> Result<Vec<JavaStackTrace>, NativeError> { Err(NativeError::NotImplemented) }
     fn get_all_threads(&self) -> Result<Vec<ThreadId>, NativeError> { Err(NativeError::NotImplemented) }
     fn get_thread_cpu_time(&self, thread_id: JavaThread) -> Result<JavaLong, NativeError> { Err(NativeError::NotImplemented) }
     fn get_thread_cpu_timer_info(&self) -> Result<jvmtiTimerInfo, NativeError> { Err(NativeError::NotImplemented) }
@@ -260,60 +260,38 @@ impl JVMTI for JVMTIEnvironment {
         }
     }
 
-    fn get_all_stacktraces(&self) {
+    fn get_all_stacktraces(&self) -> Result<Vec<JavaStackTrace>, NativeError> {
         let max_frame_count:jint = 100;
         let mut thread_count:jint = 0;
         let mut stack_info_ptr: *mut jvmtiStackInfo = ptr::null_mut();
-        //let mut threads_ptr : *mut jthread = ptr::null_mut();
-
-        println!("GetAllStackTraces");
+        let mut stack_traces_list: Vec<JavaStackTrace> = vec![];
         unsafe {
             match wrap_error((**self.jvmti).GetAllStackTraces.unwrap()(self.jvmti, max_frame_count, &mut stack_info_ptr, &mut thread_count )){
                 NativeError::NoError => {
                     let count: usize = thread_count as usize;
-                    println!("thread_count: {}, count: {}", thread_count, count);
-
                     let stack_info_array = unsafe { std::slice::from_raw_parts(stack_info_ptr, count ) };
+                    //enumerate thread stacks
                     for i in 0..count {
                         let stack_info = stack_info_array[i];
-                        println!("stack_info: {}, thread: {:?}, state: {:?}", (i+1), stack_info.thread, stack_info.state);
-
-                        let mut cpu_time = -1;
-                        match self.get_thread_cpu_time(stack_info.thread) {
-                            Ok(t) => { cpu_time = t },
-                            Err(err) => {
-                                println!("get_thread_cpu_time error: {:?}", err)
-                            }
-                        }
-
-                        if let Ok(thread_info) = self.get_thread_info(&stack_info.thread) {
-                            println!("Thread [{:?}] {}: (state = {:?}, cpu_time = {}) ", stack_info.thread, thread_info.name, stack_info.state, cpu_time );
-                        }else {
-                            println!("Thread [{:?}] UNKNOWN: (state = UNKNOWN, cpu_time = {}) ", stack_info.thread, cpu_time);
-                        }
+                        let mut stack_trace = JavaStackTrace{
+                            thread: stack_info.thread,
+                            state: stack_info.state,
+                            frame_buffer: vec![]
+                        };
 
                         let stack_frames = unsafe { std::slice::from_raw_parts(stack_info.frame_buffer,stack_info.frame_count as usize) };
                         for n in 0..stack_info.frame_count as usize {
                             let stack_frame = stack_frames[n];
-                            let method_id = MethodId { native_id : stack_frame.method };
-                            let method = self.get_method_name(&method_id).unwrap();
-
-                            //https://blog.51cto.com/supercharles888/1587917
-                            //GetMethodDeclaringClass
-
-                            let class_id = self.get_method_declaring_class(&method_id).unwrap();
-                            let class = self.get_class_signature(&class_id).unwrap();
-
-                            println!("{}.{}()", &class.name, &method.name);
+                            stack_trace.frame_buffer.push( JavaStackFrame{ method: stack_frame.method, location: stack_frame.location } );
                         }
-                        println!("");
+                        stack_traces_list.push(stack_trace);
                     }
-
                     self.deallocate(stack_info_ptr as *mut i8);
+                    Ok(stack_traces_list)
                 },
                 err@ _ => {
-                    println!("GetAllStackTraces error: {:?}", err)
-                    //Err(err)
+                    println!("GetAllStackTraces error: {:?}", err);
+                    Err(err)
                 }
             }
         }

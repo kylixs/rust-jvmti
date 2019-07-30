@@ -46,10 +46,10 @@ impl Agent {
         }
     }
 
-    pub fn new_attach(vm: JavaVMPtr) -> Agent {
+    pub fn new_attach(vm: JavaVMPtr, thread_name: &str) -> Agent {
         let jvm_agent = JVMAgent::new(vm);
 
-        match jvm_agent.attach() {
+        match jvm_agent.attach(thread_name) {
             Ok(environment) => Agent {
                 jvm: Box::new(jvm_agent),
                 capabilities: Capabilities::new(),

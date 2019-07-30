@@ -26,9 +26,10 @@ extern crate chrono;
 use chrono::Local;
 use trace::tree::*;
 use std::sync::{Mutex,Arc,RwLock};
-use time::Duration;
+use time::{Duration,Tm};
 use environment::jvm::{JVMF, JVMAgent};
 use environment::jvmti::JVMTI;
+use profile::stack_trace::*;
 
 pub mod agent;
 pub mod bytecode;
@@ -50,7 +51,8 @@ pub mod runtime;
 pub mod thread;
 pub mod util;
 pub mod version;
-pub mod trace;
+mod trace;
+mod profile;
 
 /*
  * TODO The functions below are essentially parts of an actual client implementation. Because this
@@ -321,7 +323,7 @@ pub extern fn Agent_OnAttach(vm: JavaVMPtr, options: MutString, reserved: VoidPt
                     println!("Trace agent is running ...");
                     let vm = vm_ptr as JavaVMPtr;
                     println!("create agent ..");
-                    let mut agent = Agent::new_attach(vm);
+                    let mut agent = Agent::new_attach(vm, "Flare-Profiler");
                     println!("init_agent ..");
                     init_agent(&mut agent);
                     let jvmti = &agent.environment;
@@ -331,8 +333,17 @@ pub extern fn Agent_OnAttach(vm: JavaVMPtr, options: MutString, reserved: VoidPt
                     while is_trace_enable() {
                         samples += 1;
                         println!("[{}] get sample: {}", nowTime(), samples);
-                        jvmti.get_all_stacktraces();
-                        println!("---------------------------------------");
+                        let t0 = time::now();
+                        match jvmti.get_all_stacktraces() {
+                            Ok(stack_traces) => {
+                                let dt = time::now() - t0;
+                                println!("get all stack traces, size: {}, cost: {}ms", stack_traces.len(),  dt.num_microseconds().unwrap() as f64 / 1000.0);
+                                println!("---------------------------------------");
+                            },
+                            Err(e) => {
+                                println!("get all stack traces failed, error: {:?}", e);
+                            }
+                        }
                         std::thread::sleep(std::time::Duration::from_secs(2));
                     }
                     set_trace_enable(false);

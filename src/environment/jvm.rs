@@ -9,7 +9,7 @@ use std::ffi::CString;
 
 pub trait JVMF {
     fn get_environment(&self) -> Result<Box<JVMTI>, NativeError>;
-    fn attach(&self) -> Result<Box<JVMTI>, NativeError> { Result::Err(wrap_error(999999)) }
+    fn attach(&self, thread_name: &str) -> Result<Box<JVMTI>, NativeError> { Result::Err(wrap_error(999999)) }
     fn destroy(&self) -> Result<(), NativeError>;
 }
 ///
@@ -53,11 +53,11 @@ impl JVMF for JVMAgent {
 //    #define JNI_VERSION_1_4 0x00010004
 //    #define JNI_VERSION_1_6 0x00010006
 //    #define JNI_VERSION_1_8 0x00010008
-    fn attach(&self) -> Result<Box<JVMTI>, NativeError> {
+    fn attach(&self, thread_name: &str) -> Result<Box<JVMTI>, NativeError> {
         unsafe {
             let mut void_ptr: *mut c_void = ptr::null_mut() as *mut c_void;
             let penv_ptr: *mut *mut c_void = &mut void_ptr as *mut *mut c_void;
-            let thread_name = CString::new("Flare-Tracer").expect("CString::new failed");
+            let thread_name = CString::new(thread_name).expect("CString::new failed");
             let thread_name_ptr = thread_name.as_ptr() as *mut i8;
             let mut args = JavaVMAttachArgs {
                 version: 0x00010006,
