@@ -1,2 +1,2 @@
 
-pub mod stack_trace;
+pub mod sample;

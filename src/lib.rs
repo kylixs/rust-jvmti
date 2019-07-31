@@ -29,7 +29,7 @@ use std::sync::{Mutex,Arc,RwLock};
 use time::{Duration,Tm};
 use environment::jvm::{JVMF, JVMAgent};
 use environment::jvmti::JVMTI;
-use profile::stack_trace::*;
+use profile::sample::*;
 
 pub mod agent;
 pub mod bytecode;
@@ -63,6 +63,7 @@ mod profile;
 lazy_static! {
     static ref TREE_ARENA: Mutex<TreeArena> = Mutex::new(TreeArena::new());
     static ref TRACE_ENABLE: Mutex<bool> = Mutex::new(false);
+    static ref SAMPLER: Mutex<Sampler> = Mutex::new(Sampler::new());
 }
 
 fn is_trace_enable() -> bool {
@@ -336,8 +337,12 @@ pub extern fn Agent_OnAttach(vm: JavaVMPtr, options: MutString, reserved: VoidPt
                         let t0 = time::now();
                         match jvmti.get_all_stacktraces() {
                             Ok(stack_traces) => {
-                                let dt = time::now() - t0;
-                                println!("get all stack traces, size: {}, cost: {}ms", stack_traces.len(),  dt.num_microseconds().unwrap() as f64 / 1000.0);
+                                let t1 = time::now();
+                                let output = SAMPLER.lock().unwrap().format_stack_traces(jvmti, &stack_traces);
+                                let t2 = time::now();
+                                println!("{}", output);
+                                println!("get all stack traces, size: {}, cost: {}ms", stack_traces.len(),  (t1-t0).num_microseconds().unwrap() as f64 / 1000.0);
+                                println!("print all stack traces, cost: {}ms", (t2-t1).num_microseconds().unwrap() as f64 / 1000.0);
                                 println!("---------------------------------------");
                             },
                             Err(e) => {

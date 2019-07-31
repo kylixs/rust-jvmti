@@ -1,8 +1,11 @@
 use super::native::JavaMethod;
 
+#[derive(Hash, Eq, PartialEq, Clone, Copy, Debug)]
 pub struct MethodId {
     pub native_id: JavaMethod
 }
+
+unsafe impl std::marker::Send for MethodId { }
 
 pub struct Method {
     pub id: MethodId
