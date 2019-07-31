@@ -27,16 +27,17 @@ impl Sampler {
         for (i, stack_info) in stack_traces.iter().enumerate() {
             result.push_str(&format!("\nstack_info: {}, thread: {:?}, state: {:?}\n", (i+1), stack_info.thread, stack_info.state));
 
-            let mut cpu_time = -1;
+            let mut cpu_time = -1f64;
             match jvmti.get_thread_cpu_time(stack_info.thread) {
-                Ok(t) => { cpu_time = t },
+                Ok(t) => { cpu_time = t as f64 / 1000000.0 },
                 Err(err) => {
                     result.push_str(&format!("get_thread_cpu_time error: {:?}\n", err))
                 }
             }
 
             if let Ok(thread_info) = jvmti.get_thread_info(&stack_info.thread) {
-                result.push_str(&format!("Thread [{:?}] {}: (state = {:?}, cpu_time = {}) \n", stack_info.thread, thread_info.name, stack_info.state, cpu_time ));
+                result.push_str(&format!("Thread [{:?}] {}: (priority = {}, daemon = {}, state = {:?}, cpu_time = {}) \n",
+                                         stack_info.thread, thread_info.name, thread_info.priority, thread_info.is_daemon,  stack_info.state, cpu_time ));
             }else {
                 result.push_str(&format!("Thread [{:?}] UNKNOWN: (state = UNKNOWN, cpu_time = {}) \n", stack_info.thread, cpu_time));
             }

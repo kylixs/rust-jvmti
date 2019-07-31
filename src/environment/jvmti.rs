@@ -19,6 +19,7 @@ use native::JavaMethod;
 ///
 /// JVMTI interface
 /// https://docs.oracle.com/javase/8/docs/platform/jvmti/jvmti.html
+/// https://docs.oracle.com/en/java/javase/12/docs/specs/jvmti.html
 ///
 pub trait JVMTI {
 
@@ -301,7 +302,6 @@ impl JVMTI for JVMTIEnvironment {
         let mut thread_count:jint = 0;
         let mut threads_ptr : *mut jthread = ptr::null_mut();
 
-        println!("GetAllThreads");
         unsafe {
             match wrap_error((**self.jvmti).GetAllThreads.unwrap()(self.jvmti, &mut thread_count, &mut threads_ptr)){
                 NativeError::NoError => {
