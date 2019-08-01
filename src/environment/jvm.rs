@@ -6,10 +6,12 @@ use libc::c_void;
 use std::ptr;
 use native::jvmti_native::JavaVMAttachArgs;
 use std::ffi::CString;
+use native::JNIEnvPtr;
+use environment::jni::{JNIEnvironment, JNI};
 
 pub trait JVMF {
     fn get_environment(&self) -> Result<Box<JVMTI>, NativeError>;
-    fn attach(&self, thread_name: &str) -> Result<Box<JVMTI>, NativeError> { Result::Err(wrap_error(999999)) }
+    fn attach(&self, thread_name: &str) -> Result<Box<JNI>, NativeError> { Result::Err(wrap_error(999999)) }
     fn destroy(&self) -> Result<(), NativeError>;
 }
 ///
@@ -53,7 +55,7 @@ impl JVMF for JVMAgent {
 //    #define JNI_VERSION_1_4 0x00010004
 //    #define JNI_VERSION_1_6 0x00010006
 //    #define JNI_VERSION_1_8 0x00010008
-    fn attach(&self, thread_name: &str) -> Result<Box<JVMTI>, NativeError> {
+    fn attach(&self, thread_name: &str) -> Result<Box<JNI>, NativeError> {
         unsafe {
             let mut void_ptr: *mut c_void = ptr::null_mut() as *mut c_void;
             let penv_ptr: *mut *mut c_void = &mut void_ptr as *mut *mut c_void;
@@ -69,10 +71,10 @@ impl JVMF for JVMAgent {
             match result {
                 NativeError::NoError => {
                     //Note: use env_ptr from AttachCurrentThreadAsDaemon will get crash on call jvmti method, but call GetEnv one more time will work fine!
-//                    let env_ptr: JVMTIEnvPtr = *penv_ptr as JVMTIEnvPtr;
-//                    let env = JVMTIEnvironment::new(env_ptr);
-//                    return Result::Ok(Box::new(env));
-                    return self.get_environment();
+                    let env_ptr: JNIEnvPtr = *penv_ptr as JNIEnvPtr;
+                    let env = JNIEnvironment::new(env_ptr);
+                    return Result::Ok(Box::new(env));
+//                    return self.get_environment();
                 },
                 err @ _ => Result::Err(wrap_error(err as u32))
             }

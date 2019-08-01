@@ -1,3 +1,5 @@
+//#![feature(ptr_cast)]
+
 extern crate libc;
 #[macro_use]
 extern crate lazy_static;
@@ -28,8 +30,10 @@ use trace::tree::*;
 use std::sync::{Mutex,Arc,RwLock};
 use time::{Duration,Tm};
 use environment::jvm::{JVMF, JVMAgent};
-use environment::jvmti::JVMTI;
+use environment::jvmti::{JVMTI, JVMTIEnvironment};
 use profile::sample::*;
+use environment::Environment;
+use environment::jni::JNIEnvironment;
 
 pub mod agent;
 pub mod bytecode;
@@ -37,7 +41,7 @@ pub mod capabilities;
 pub mod class;
 pub mod config;
 pub mod context;
-pub mod emulator;
+//pub mod emulator;
 pub mod environment;
 pub mod error;
 pub mod event;
@@ -120,7 +124,7 @@ fn on_thread_start(thread: Thread) {
     if !is_trace_enable() {
         return;
     }
-    println!("[{}] [TS-{}]", nowTime(), thread.name);
+    println!("[{}] thread start [{}] [{}]", nowTime(), thread.id, thread.name);
 
     static_context().thread_start(&thread.id);
 }
@@ -129,7 +133,7 @@ fn on_thread_end(thread: Thread) {
     if !is_trace_enable() {
         return;
     }
-    println!("[{}] [TE-{}]", nowTime(), thread.name);
+    println!("[{}] thread end [{}] [{}]", nowTime(), thread.id, thread.name);
 
     match static_context().thread_end(&thread.id) {
         Some(duration) => {
@@ -327,7 +331,7 @@ pub extern fn Agent_OnAttach(vm: JavaVMPtr, options: MutString, reserved: VoidPt
                     let mut agent = Agent::new_attach(vm, "Flare-Profiler");
                     println!("init_agent ..");
                     init_agent(&mut agent);
-                    let jvmti = &agent.environment;
+                    let jvmti = &agent.jvm_env;
 
                     set_trace_enable(true);
                     let mut samples=0;
@@ -341,8 +345,10 @@ pub extern fn Agent_OnAttach(vm: JavaVMPtr, options: MutString, reserved: VoidPt
                                 let output = SAMPLER.lock().unwrap().format_stack_traces(jvmti, &stack_traces);
                                 let t2 = time::now();
                                 println!("{}", output);
+                                let t3 = time::now();
                                 println!("get all stack traces, size: {}, cost: {}ms", stack_traces.len(),  (t1-t0).num_microseconds().unwrap() as f64 / 1000.0);
-                                println!("print all stack traces, cost: {}ms", (t2-t1).num_microseconds().unwrap() as f64 / 1000.0);
+                                println!("format all stack traces, cost: {}ms", (t2-t1).num_nanoseconds().unwrap() as f64 / 1000000.0);
+                                println!("print all stack traces, cost: {}ms", (t3-t2).num_nanoseconds().unwrap() as f64 / 1000000.0);
                                 println!("---------------------------------------");
                             },
                             Err(e) => {

@@ -1,5 +1,6 @@
 use super::native::JavaThread;
 use std::fmt::{Display, Formatter, Error};
+use native::JavaLong;
 
 ///
 /// Represents a link between a JVM thread and the Rust code calling the JVMTI API.
@@ -24,6 +25,7 @@ impl Display for ThreadId {
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]
 pub struct Thread {
     pub id: ThreadId,
+    pub thread_id: JavaLong, // actual java thread id
     pub name: String,
     pub priority: u32,
     pub is_daemon: bool

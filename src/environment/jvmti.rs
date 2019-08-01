@@ -13,7 +13,7 @@ use super::super::native::jvmti_native::{Struct__jvmtiThreadInfo, jvmtiCapabilit
 use std::ptr;
 use native::jvmti_native::*;
 use std::os::raw::{c_char, c_uchar};
-use native::JavaMethod;
+use native::{JavaMethod, JNIEnvPtr};
 
 
 ///
@@ -48,10 +48,12 @@ pub trait JVMTI {
     fn allocate(&self, len: usize) -> Result<MemoryAllocation, NativeError>;
     fn deallocate(&self, ptr: *mut i8);
 
-    fn get_all_stacktraces(&self) -> Result<Vec<JavaStackTrace>, NativeError> { Err(NativeError::NotImplemented) }
-    fn get_all_threads(&self) -> Result<Vec<ThreadId>, NativeError> { Err(NativeError::NotImplemented) }
-    fn get_thread_cpu_time(&self, thread_id: JavaThread) -> Result<JavaLong, NativeError> { Err(NativeError::NotImplemented) }
-    fn get_thread_cpu_timer_info(&self) -> Result<jvmtiTimerInfo, NativeError> { Err(NativeError::NotImplemented) }
+    fn get_all_stacktraces(&self) -> Result<Vec<JavaStackTrace>, NativeError>;
+    fn get_all_threads(&self) -> Result<Vec<ThreadId>, NativeError>;
+    fn get_thread_cpu_time(&self, thread_id: &JavaThread) -> Result<JavaLong, NativeError>;
+    fn get_thread_cpu_timer_info(&self) -> Result<jvmtiTimerInfo, NativeError>;
+
+    fn get_jni_env(&self) -> Result<JNIEnvPtr, NativeError>;
 }
 
 pub struct JVMTIEnvironment {
@@ -171,6 +173,7 @@ impl JVMTI for JVMTIEnvironment {
                         NativeError::NoError => {
                             let thread = Thread {
                                 id: ThreadId { native_id: *thread_id },
+                                thread_id: 0,
                                 name: stringify((*info_ptr).name),
                                 priority: (*info_ptr).priority as u32,
                                 is_daemon: if (*info_ptr).is_daemon > 0 { true } else { false }
@@ -320,10 +323,10 @@ impl JVMTI for JVMTIEnvironment {
         }
     }
 
-    fn get_thread_cpu_time(&self, thread_id: JavaThread) -> Result<JavaLong, NativeError> {
+    fn get_thread_cpu_time(&self, thread_id: &JavaThread) -> Result<JavaLong, NativeError> {
         let mut nanos: JavaLong = 0;
         unsafe {
-            match wrap_error((**self.jvmti).GetThreadCpuTime.unwrap()(self.jvmti, thread_id, &mut nanos)){
+            match wrap_error((**self.jvmti).GetThreadCpuTime.unwrap()(self.jvmti, *thread_id, &mut nanos)){
                 NativeError::NoError => Ok(nanos),
                 err @ _ => Err(err)
             }
@@ -348,6 +351,18 @@ impl JVMTI for JVMTIEnvironment {
             }
         }
 
+    }
+
+
+    fn get_jni_env(&self) -> Result<JNIEnvPtr, NativeError>  {
+        unsafe {
+            let mut jni_env :*mut JNINativeInterface = std::ptr::null_mut();
+            let mut jni_env_ptr: *mut *mut JNINativeInterface  = &mut jni_env;
+            match wrap_error((**self.jvmti).GetJNIFunctionTable.unwrap()(self.jvmti, jni_env_ptr)){
+                NativeError::NoError => Ok(jni_env_ptr as JNIEnvPtr),
+                err @ _ => Err(err)
+            }
+        }
     }
 }
 
