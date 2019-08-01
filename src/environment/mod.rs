@@ -13,6 +13,7 @@ use native::{JavaClass, JavaMethod, JavaLong, JNIEnvPtr};
 use environment::jvmti::JavaStackTrace;
 use thread::ThreadId;
 use native::jvmti_native::jvmtiTimerInfo;
+use std::cell::Cell;
 
 pub mod jni;
 pub mod jvm;
@@ -22,24 +23,33 @@ pub mod jvmti;
 /// both and delegating the method calls to their corresponding recipients.
 pub struct Environment {
     jvmti: Box<JVMTI>,
-    jni: Box<JNI>
+    jni: Box<JNI>,
+    thread_get_id_method: Cell<Option<JavaMethod>>
 }
 
 impl Environment {
 
     pub fn new(jvmti: JVMTIEnvironment, jni: JNIEnvironment) -> Environment {
-        Environment { jvmti: Box::new(jvmti), jni: Box::new(jni )}
+        Environment { jvmti: Box::new(jvmti), jni: Box::new(jni ), thread_get_id_method: Cell::new(None) }
     }
 
     pub fn new_from(jvmti: Box<JVMTI>, jni: Box<JNI>) -> Environment {
-        Environment { jvmti: jvmti, jni: jni }
+        Environment { jvmti: jvmti, jni: jni, thread_get_id_method: Cell::new(None) }
     }
 
     fn get_thread_id(&self, thread_id: &JavaThread) -> JavaLong {
         //get actual java thread id
-        let threadClass = self.jni.find_class("java/lang/Thread");
-        let getIdMethodId = self.jni.get_method_id(threadClass.native_id, "getId", "()J");
-        self.call_long_method(thread_id.clone(), getIdMethodId)
+        match self.thread_get_id_method.get() {
+            Some(method_id) => {
+                self.call_long_method(thread_id.clone(), method_id)
+            },
+            None => {
+                let thread_class = self.jni.find_class("java/lang/Thread");
+                let get_id_method = self.jni.get_method_id(thread_class.native_id, "getId", "()J");
+                self.thread_get_id_method.set(Some(get_id_method.clone()));
+                self.call_long_method(thread_id.clone(), get_id_method)
+            },
+        }
     }
 
 }
