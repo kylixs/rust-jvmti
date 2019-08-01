@@ -105,7 +105,7 @@ impl JVMTI for Environment {
         self.jvmti.get_all_threads()
     }
 
-    fn get_thread_cpu_time(&self, thread_id: &JavaThread) -> Result<i32, NativeError> {
+    fn get_thread_cpu_time(&self, thread_id: &JavaThread) -> Result<JavaLong, NativeError> {
         self.jvmti.get_thread_cpu_time(thread_id)
     }
 
@@ -132,7 +132,7 @@ impl JNI for Environment {
         self.jni.get_method_id(clazz, method_name, method_sig)
     }
 
-    fn call_long_method(&self, thread: JavaThread, method_id: JavaMethod) -> i32 {
+    fn call_long_method(&self, thread: JavaThread, method_id: JavaMethod) -> JavaLong {
         self.jni.call_long_method(thread, method_id)
     }
 }

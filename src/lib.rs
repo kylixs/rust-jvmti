@@ -20,7 +20,7 @@ use instrumentation::asm::transformer::Transformer;
 use native::{JavaVMPtr, MutString, VoidPtr, ReturnValue};
 use options::Options;
 use runtime::*;
-use std::io::Cursor;
+use std::io::{Cursor, Write};
 use thread::Thread;
 use util::stringify;
 use std::time::*;
@@ -34,6 +34,7 @@ use environment::jvmti::{JVMTI, JVMTIEnvironment};
 use profile::sample::*;
 use environment::Environment;
 use environment::jni::JNIEnvironment;
+use std::path::Path;
 
 pub mod agent;
 pub mod bytecode;
@@ -344,7 +345,14 @@ pub extern fn Agent_OnAttach(vm: JavaVMPtr, options: MutString, reserved: VoidPt
                                 let t1 = time::now();
                                 let output = SAMPLER.lock().unwrap().format_stack_traces(jvmti, &stack_traces);
                                 let t2 = time::now();
-                                println!("{}", output);
+                                //println!("{}", output);
+
+                                let file_path = Path::new("flare-data.txt");
+                                println!("writing to file: {}", file_path.display());
+                                let mut file = std::fs::File::create(file_path).expect("create failed");
+                                file.write_all(&output.as_bytes()).expect("write failed");
+                                println!("write is ok.");
+
                                 let t3 = time::now();
                                 println!("get all stack traces, size: {}, cost: {}ms", stack_traces.len(),  (t1-t0).num_microseconds().unwrap() as f64 / 1000.0);
                                 println!("format all stack traces, cost: {}ms", (t2-t1).num_nanoseconds().unwrap() as f64 / 1000000.0);
