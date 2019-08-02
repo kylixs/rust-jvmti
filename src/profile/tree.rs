@@ -11,6 +11,8 @@ use time::Duration;
 
 use thread::*;
 use log::{debug, info, warn};
+use native::JavaLong;
+use std::collections::hash_map::IterMut;
 
 
 static CALL_COUNT: AtomicUsize = AtomicUsize::new(0);
@@ -21,83 +23,83 @@ fn get_next_nodeid() {
 
 
 
-// thread safe
+// assume thread safe, get lock outside
 pub struct TreeArena {
-    thread_trees: HashMap<ThreadId,ThreadData>,
-    lock: RwLock<u32>
+    thread_trees: HashMap<JavaLong, CallStackTree>,
+//    lock: RwLock<u32>
 }
 
 impl TreeArena {
     pub fn new() -> TreeArena {
         TreeArena {
             thread_trees: HashMap::new(),
-            lock: RwLock::new(0)
+            //lock: RwLock::new(0)
         }
     }
 
-//    pub fn get_call_tree(&self, thread: &Thread) -> Option<Arc<ThreadData>> {
-//        self.thread_trees.write().unwrap().get_mut(&thread.id).map(|v| Arc::clone(v))
-//    }
+    pub fn get_all_call_trees(&self) -> &HashMap<JavaLong, CallStackTree>{
+        &self.thread_trees
+    }
 
-//    pub fn create_call_tree(&self, thread: &Thread) {
-//        self.thread_trees.write().unwrap()
-//            .insert(thread.id.clone(), Arc::new(ThreadData {
-//                nodes: vec![TreeNode::newRootNode(&thread.name)],
-//                root_node: NodeId{index: 0},
-//                top_call_stack_node: NodeId{index: 0},
-//            }));
-//    }
+    pub fn get_call_tree(&mut self, thread: &Thread) -> &mut CallStackTree {
+        self.thread_trees.entry(thread.thread_id).or_insert_with(||{
+            CallStackTree {
+                nodes: vec![TreeNode::newRootNode(&thread.name)],
+                root_node: NodeId { index: 0 },
+                top_call_stack_node: NodeId { index: 0 },
+            }
+        });
+        self.thread_trees.get_mut(&thread.thread_id).unwrap()
+    }
 
     pub fn begin_call(&mut self, thread: &Thread, class_name: &String, method_name: &String) {
-        {
-            let mut n = self.lock.write().unwrap();
-            *n += 1;
-            match self.thread_trees.get_mut(&thread.id) {
-                Some(thread_data) => {
-                    thread_data.begin_call(&class_name, &method_name);
-                },
-                None => {
-                    self.thread_trees.insert(thread.id.clone(), ThreadData {
-                        nodes: vec![TreeNode::newRootNode(&thread.name)],
-                        root_node: NodeId { index: 0 },
-                        top_call_stack_node: NodeId { index: 0 },
-                    });
-                    let thread_data = self.thread_trees.get_mut(&thread.id).unwrap();
-                    thread_data.begin_call(&class_name, &method_name);
-                    println!(" create call tree: [{:?}] [{}], total trees: {} ", thread.id.native_id, thread.name, self.thread_trees.len());
-                    //println!(" create call tree failed: [{:?}] [{}] ", thread.id.native_id, thread.name);
-                }
+//        let mut n = self.lock.write().unwrap();
+//        *n += 1;
+        match self.thread_trees.get_mut(&thread.thread_id) {
+            Some(thread_data) => {
+                thread_data.begin_call(&class_name, &method_name);
+            },
+            None => {
+                self.thread_trees.insert(thread.thread_id, CallStackTree {
+                    nodes: vec![TreeNode::newRootNode(&thread.name)],
+                    root_node: NodeId { index: 0 },
+                    top_call_stack_node: NodeId { index: 0 },
+                });
+                let thread_data = self.thread_trees.get_mut(&thread.thread_id).unwrap();
+                thread_data.begin_call(&class_name, &method_name);
+                println!(" create call tree: [{:?}] [{}], total trees: {} ", thread.thread_id, thread.name, self.thread_trees.len());
             }
         }
     }
 
-    pub fn end_call(&mut self, thread: &Thread, class_name: &String, method_name: &String, duration: &Duration) {
-        let mut n = self.lock.write().unwrap();
-        *n += 1;
-        match self.thread_trees.get_mut(&thread.id) {
+    pub fn end_call(&mut self, thread: &Thread, class_name: &String, method_name: &String, duration: i64) {
+//        let mut n = self.lock.write().unwrap();
+//        *n += 1;
+        match self.thread_trees.get_mut(&thread.thread_id) {
             Some(thread_data) => {
-                thread_data.end_call(&class_name, &method_name, &duration);
+                thread_data.end_call(&class_name, &method_name, duration);
             },
             None => {}
         }
     }
 
-    pub fn print_call_tree(&mut self, thread: &Thread) {
-        match self.thread_trees.get(&thread.id) {
+    pub fn format_call_tree(&mut self, thread: &Thread, compact: bool) -> String {
+        match self.thread_trees.get(&thread.thread_id) {
             Some(thread_data) => {
-                println!("call tree of thread: [{:?}] [{}]", thread.id.native_id, thread.name);
-                thread_data.print_call_tree();
+                println!("call tree of thread: [{}] [{}]", thread.thread_id, thread.name);
+                thread_data.format_call_tree(compact)
             },
             None => {
-                println!("call tree not found of thread: [{:?}] [{}]", thread.id.native_id, thread.name)
+                println!("call tree not found of thread: [{}] [{}]", thread.thread_id, thread.name);
+                String::from("[call tree not found]")
             }
         }
     }
 
     pub fn print_all(&self) {
         for (thread_id,thread_data) in self.thread_trees.iter() {
-            println!("call tree of thread: [{:?}]", thread_id.native_id);
-            thread_data.print_call_tree();
+            println!("call tree of thread: [{}]", thread_id);
+            println!("{}", thread_data.format_call_tree(false));
         }
     }
 
@@ -108,13 +110,17 @@ impl TreeArena {
 }
 
 
-pub struct ThreadData {
+pub struct CallStackTree {
     nodes: Vec<TreeNode>,
     root_node: NodeId,
     top_call_stack_node: NodeId
 }
 
-impl ThreadData {
+impl CallStackTree {
+
+    pub fn reset_top_call_stack_node(&mut self) {
+        self.top_call_stack_node = self.root_node;
+    }
 
     pub fn begin_call(&mut self, class_name: &String, method_name: &String) {
         //let topNode = &mut self.nodes[self.top_call_stack_node.index];
@@ -143,12 +149,12 @@ impl ThreadData {
 
     }
 
-    pub fn end_call(&mut self, class_name: &String, method_name: &String, duration: &Duration) {
+    pub fn end_call(&mut self, class_name: &String, method_name: &String, duration: i64) {
         let call_name = TreeNode::get_node_key(class_name, method_name);
         //let top_node = self.nodes[self.top_call_stack_node.index];
         let top_node = self.get_mut_top_node();
         if top_node.data.name == call_name {
-            top_node.data.call_duration += -duration.num_microseconds().unwrap();
+            top_node.data.call_duration += duration;
             top_node.data.call_count += 1;
 
             debug!("end_call: {} {}, call_count:{}", call_name, duration, top_node.data.call_count);
@@ -162,24 +168,38 @@ impl ThreadData {
                 },
                 None => {
                     println!("parent node not found, pop call stack failed, call_name: {}, stack: {}, depth: {}",
-                             call_name, top_node.data.path, top_node.data.depth)
+                             call_name, top_node.data.name, top_node.data.depth)
                 }
             }
         } else {
             println!("call name mismatch, pop call stack failed, call_name: {}, top_node:{}, stack:{}, depth: {} ",
-                     call_name, top_node.data.name, top_node.data.path, top_node.data.depth);
+                     call_name, top_node.data.name, top_node.data.name, top_node.data.depth);
         }
     }
 
-    pub fn print_call_tree(&self) {
-
-        self.print_tree_node(&self.root_node);
+    pub fn end_last_call(&mut self, duration: i64) {
+        let top_node = self.get_mut_top_node();
+        top_node.data.call_duration += duration;
+        top_node.data.call_count += 1;
     }
 
-    pub fn print_tree_node(&self, nodeid: &NodeId) {
+    //
+    // compact: bool 是否为紧凑模式，即树结点深度使用数字表示。如果为false，则树深度使用多个' '表示
+    //
+    pub fn format_call_tree(&self, compact: bool) -> String {
+        let mut result  = String::new();
+        self.format_tree_node(&mut result,&self.root_node, compact);
+        result
+    }
+
+    pub fn format_tree_node(&self, result: &mut String, nodeid: &NodeId, compact: bool) {
         let node = self.get_node(&nodeid);
-        for x in 0..node.data.depth {
-            print!("  ");
+        if compact {
+            result.push_str(&format!("{},", node.data.depth));
+        } else {
+            for x in 0..node.data.depth {
+                result.push_str(&format!("  "));
+            }
         }
         let mut call_duration = node.data.call_duration;
         //sum all children duration of root
@@ -190,10 +210,10 @@ impl ThreadData {
         }else {
 
         }
-        println!("{}[calls={}, duration={}]", node.data.name, node.data.call_count, call_duration);
+        result.push_str(&format!("{}[calls={}, duration={}]\n", node.data.name, node.data.call_count, call_duration));
 
         for child in node.children.values() {
-            self.print_tree_node(&child);
+            self.format_tree_node(result,&child, compact);
         }
     }
 
@@ -212,23 +232,23 @@ impl ThreadData {
 
 #[derive(Clone)]
 pub struct NodeData {
-    node_id: NodeId,
-    depth: u32,
-    name: String,
-    path: String,
-    call_count: u32, // call count
-    call_duration: i64, // call duration
-    children_size: u32 //children size
+    pub node_id: NodeId,
+    pub depth: u32, // move to TreeNode
+    pub name: String,
+//    path: String,
+    pub call_count: u32, // call count
+    pub call_duration: i64, // call duration
+    pub children_size: u32 //children size
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct NodeId {
     index: usize,
 }
 
 #[derive( Clone)]
 pub struct TreeNode {
-    data: NodeData,
+    pub data: NodeData,
     parent: Option<NodeId>,
     children: HashMap<String, NodeId>
 }
@@ -241,7 +261,7 @@ impl TreeNode {
                 node_id: NodeId{index:0},
                 depth: 0,
                 name: name.to_string(),
-                path: name.to_string(),
+//                path: name.to_string(),
                 call_count: 0,
                 call_duration: 0,
                 children_size: 0,
@@ -255,9 +275,9 @@ impl TreeNode {
         let name = TreeNode::get_node_key(class_name, method_name);
 
         //call path
-        let mut path = parentNode.data.path.to_string();
-        path += ";";
-        path += name.as_str();
+//        let mut path = parentNode.data.path.to_string();
+//        path += ";";
+//        path += name.as_str();
 
         let node_id = NodeId{index:next_index};
 
@@ -268,7 +288,7 @@ impl TreeNode {
             data : NodeData {
                 node_id: node_id,
                 name: name.to_string(),
-                path: path.to_string(),
+//                path: path.to_string(),
                 depth: parentNode.data.depth + 1,
                 call_count: 0,
                 call_duration: 0,

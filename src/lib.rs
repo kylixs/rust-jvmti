@@ -9,6 +9,8 @@ extern crate toml;
 extern crate serde_derive;
 #[macro_use] extern crate log;
 extern crate env_logger;
+extern crate serde_json;
+extern crate serde;
 
 use agent::Agent;
 use bytecode::printer::ClassfilePrinter;
@@ -26,7 +28,6 @@ use util::stringify;
 use std::time::*;
 extern crate chrono;
 use chrono::Local;
-use trace::tree::*;
 use std::sync::{Mutex,Arc,RwLock};
 use time::{Duration,Tm};
 use environment::jvm::{JVMF, JVMAgent};
@@ -56,7 +57,6 @@ pub mod runtime;
 pub mod thread;
 pub mod util;
 pub mod version;
-mod trace;
 mod profile;
 
 /*
@@ -66,19 +66,21 @@ mod profile;
  */
 
 lazy_static! {
-    static ref TREE_ARENA: Mutex<TreeArena> = Mutex::new(TreeArena::new());
-    static ref TRACE_ENABLE: Mutex<bool> = Mutex::new(false);
+    //static ref TREE_ARENA: Mutex<TreeArena> = Mutex::new(TreeArena::new());
+    //static ref TRACE_ENABLE: Mutex<bool> = Mutex::new(false);
     static ref SAMPLER: Mutex<Sampler> = Mutex::new(Sampler::new());
 }
 
 fn is_trace_enable() -> bool {
-    *TRACE_ENABLE.lock().unwrap()
+//    *TRACE_ENABLE.lock().unwrap()
+    SAMPLER.lock().unwrap().is_enable()
 }
 
 fn set_trace_enable(enable:bool) {
     static_context().set_trace_enable(enable);
-    let mut trace_enable = TRACE_ENABLE.lock().unwrap();
-    *trace_enable =  enable;
+//    let mut trace_enable = TRACE_ENABLE.lock().unwrap();
+//    *trace_enable =  enable;
+    SAMPLER.lock().unwrap().set_enable(enable);
 }
 
 fn nowTime() -> String {
@@ -97,7 +99,7 @@ fn on_method_entry(event: MethodInvocationEvent) {
     };
 
     if !shall_record {
-        TREE_ARENA.lock().unwrap().begin_call(&event.thread, &event.class_sig.name, &event.method_sig.name);
+        //TREE_ARENA.lock().unwrap().begin_call(&event.thread, &event.class_sig.name, &event.method_sig.name);
         debug!("[{}] [{}] method_entry [{}.{}]", nowTime(), event.thread.name, event.class_sig.name, event.method_sig.name);
     }
 
@@ -111,11 +113,11 @@ fn on_method_exit(event: MethodInvocationEvent) {
     match static_context().method_exit(&event.thread.id) {
         //Some(_) => (),
         Some(duration) => {
-            TREE_ARENA.lock().unwrap().end_call(&event.thread, &event.class_sig.name, &event.method_sig.name, &duration);
+            //TREE_ARENA.lock().unwrap().end_call(&event.thread, &event.class_sig.name, &event.method_sig.name, &duration);
             debug!("[{}] [{}] method_exit [{}.{}] after {}", nowTime(), event.thread.name, event.class_sig.name, event.method_sig.name, duration)
         },
         None => {
-            TREE_ARENA.lock().unwrap().end_call(&event.thread, &event.class_sig.name, &event.method_sig.name, &Duration::microseconds(0));
+            //TREE_ARENA.lock().unwrap().end_call(&event.thread, &event.class_sig.name, &event.method_sig.name, &Duration::microseconds(0));
             debug!("[{}] [{}] method_no_start [{}.{}]", nowTime(), event.thread.name, event.class_sig.name, event.method_sig.name)
         }
     }
@@ -139,7 +141,7 @@ fn on_thread_end(thread: Thread) {
     match static_context().thread_end(&thread.id) {
         Some(duration) => {
             println!("[{}] Thread {} lived {}", nowTime(), thread.name, duration);
-            TREE_ARENA.lock().unwrap().print_call_tree(&thread);
+            //TREE_ARENA.lock().unwrap().print_call_tree(&thread);
         },
         None => println!("[{}] Thread {} has no start", nowTime(), thread.name)
     }
@@ -338,32 +340,36 @@ pub extern fn Agent_OnAttach(vm: JavaVMPtr, options: MutString, reserved: VoidPt
                     let mut samples=0;
                     while is_trace_enable() {
                         samples += 1;
-                        println!("[{}] get sample: {}", nowTime(), samples);
+//                        println!("[{}] get sample: {}", nowTime(), samples);
                         let t0 = time::now();
                         match jvmti.get_all_stacktraces() {
                             Ok(stack_traces) => {
                                 let t1 = time::now();
-                                let output = SAMPLER.lock().unwrap().format_stack_traces(jvmti, &stack_traces);
+//                                let output = SAMPLER.lock().unwrap().format_stack_traces(jvmti, &stack_traces);
+                                SAMPLER.lock().unwrap().add_stack_traces(jvmti, &stack_traces);
                                 let t2 = time::now();
-                                //println!("{}", output);
 
-                                let file_path = Path::new("flare-data.txt");
-                                println!("writing to file: {}", file_path.display());
-                                let mut file = std::fs::File::create(file_path).expect("create failed");
-                                file.write_all(&output.as_bytes()).expect("write failed");
-                                println!("write is ok.");
-
-                                let t3 = time::now();
-                                println!("get all stack traces, size: {}, cost: {}ms", stack_traces.len(),  (t1-t0).num_microseconds().unwrap() as f64 / 1000.0);
-                                println!("format all stack traces, cost: {}ms", (t2-t1).num_nanoseconds().unwrap() as f64 / 1000000.0);
-                                println!("print all stack traces, cost: {}ms", (t3-t2).num_nanoseconds().unwrap() as f64 / 1000000.0);
-                                println!("---------------------------------------");
+//                                println!("jvmti get all stack traces, size: {}, cost: {}ms", stack_traces.len(),  (t1-t0).num_microseconds().unwrap() as f64 / 1000.0);
+//                                println!("process all stack traces, cost: {}ms", (t2-t1).num_microseconds().unwrap() as f64 / 1000.0);
+//                                println!("---------------------------------------");
                             },
                             Err(e) => {
                                 println!("get all stack traces failed, error: {:?}", e);
                             }
                         }
-                        std::thread::sleep(std::time::Duration::from_secs(2));
+
+                        if samples % 20 == 0 {
+                            let t4 = time::now();
+                            let file_path = Path::new("flare-data.txt");
+                            println!("[{}] writing to file: {}", nowTime(), file_path.display());
+                            let mut file = std::fs::File::create(file_path).expect("create failed");
+                            //file.write_all(&output.as_bytes()).expect("write failed");
+                            SAMPLER.lock().unwrap().write_all_call_trees(&mut file);
+                            let t5 = time::now();
+                            println!("[{}] print all stack traces, cost: {}ms", nowTime(), (t5-t4).num_microseconds().unwrap() as f64 / 1000.0);
+                        }
+
+                        std::thread::sleep(std::time::Duration::from_millis(100));
                     }
                     set_trace_enable(false);
                     println!("Trace agent is stopped.");
@@ -418,5 +424,5 @@ fn init_agent(agent: &mut Agent) {
 #[no_mangle]
 #[allow(non_snake_case, unused_variables)]
 pub extern fn Agent_OnUnload(vm: JavaVMPtr) {
-    TREE_ARENA.lock().unwrap().print_all();
+    //TREE_ARENA.lock().unwrap().print_all();
 }
