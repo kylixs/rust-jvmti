@@ -216,16 +216,15 @@ impl CallStackTree {
 
         }
 
+        //"depth, call_name, calls, duration\n"
         //let duration = call_duration as f64/1000_000.0;
         let duration = call_duration/1000_000;
-        //"{}[calls={}, duration={}]\n"
         result.push_str(&node.data.name);
-        result.push_str(&format!("[calls={}, duration={}]\n", node.data.call_count, duration));
-//        result.push_str("[calls=");
-//        result.push_str(&node.data.call_count.to_string());
-//        result.push_str(", ");
-//        result.push_str(&duration.to_string());
-//        result.push_str("]\n");
+        result.push_str(",");
+        result.push_str(&node.data.call_count.to_string());
+        result.push_str(",");
+        result.push_str(&duration.to_string());
+        result.push_str("\n");
 
         for child in node.children.values() {
             self.format_tree_node(result,&child, compact);

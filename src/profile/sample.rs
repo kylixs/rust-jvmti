@@ -75,7 +75,7 @@ impl Sampler {
     pub fn write_all_call_trees(&self, writer: &mut std::io::Write, compact: bool) {
         for (thread_id, call_tree) in self.tree_arena.get_all_call_trees() {
             let tree_name = &call_tree.get_root_node().data.name;
-            writer.write_fmt(format_args!("Thread {} {} [{}]\n", &call_tree.thread_id, tree_name, call_tree.total_duration as f64/1000_000.0));
+            writer.write_fmt(format_args!("Thread: {}, {}, {}\n", &call_tree.thread_id, tree_name, call_tree.total_duration as f64/1000_000.0));
 
             writer.write_all(call_tree.format_call_tree(compact).as_bytes());
             writer.write_all("\n".as_bytes());
