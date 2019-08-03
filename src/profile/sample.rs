@@ -8,7 +8,7 @@ use thread::{ThreadId, Thread};
 use environment::Environment;
 use serde::{Deserialize, Serialize};
 use serde_json::Result;
-use profile::tree::TreeArena;
+use profile::tree::{TreeArena, NodeId};
 use std::collections::hash_map::Entry;
 use time::Duration;
 
@@ -86,19 +86,6 @@ impl Sampler {
         //merge to call stack tree
         for (i, stack_info) in stack_traces.iter().enumerate() {
             if let Ok(thread_info) = jvm_env.get_thread_info(&stack_info.thread) {
-                let mut call_methods :Vec<(String, String)> = vec![];
-                for stack_frame in &stack_info.frame_buffer {
-                    let method_info = self.get_method_info(jvm_env, stack_frame.method);
-                    call_methods.push((method_info.class.name.to_string(), method_info.method.name.to_string()));
-                    //let call_name = format!("{}.{}()\n", &method_info.class.name, &method_info.method.name);
-                }
-                let call_tree = self.tree_arena.get_call_tree(&thread_info);
-                call_tree.reset_top_call_stack_node();
-                //reverse call
-                for (class_name, method_name) in call_methods.iter().rev() {
-                    call_tree.begin_call(class_name, method_name)
-                }
-
                 let mut cpu_time: i64 = 0_i64;
                 //if std::time::Instant::now()
                 if let Ok(t) = jvm_env.get_thread_cpu_time(&stack_info.thread) {
@@ -111,8 +98,37 @@ impl Sampler {
                     println!("get_thread_cpu_time error");
                 }
 
+                let mut call_methods :Vec<JavaMethod> = vec![];
+                for stack_frame in &stack_info.frame_buffer {
+                    call_methods.push(stack_frame.method);
+                }
+                //save nodes in temp vec, process it after build call tree, avoid second borrow muttable *self
+                let mut naming_nodes: Vec<(NodeId, JavaMethod)> = vec![];
+                let call_tree = self.tree_arena.get_call_tree(&thread_info);
+                call_tree.reset_top_call_stack_node();
+                //reverse call
+                for method_id in call_methods.iter().rev() {
+                    if !call_tree.begin_call(method_id) {
+                        naming_nodes.push((call_tree.get_top_node().data.node_id, method_id.clone()));
+                    }
+                }
+
                 call_tree.end_last_call(cpu_time);
                 //println!("add call stack: {} cpu_time:{}", thread_info.name, cpu_time);
+
+                //get method call_name of node
+                let mut node_methods: Vec<(NodeId, String)> = vec![];
+                for (node_id, method_id) in naming_nodes {
+                    let method_info = self.get_method_info(jvm_env, method_id);
+                    let call_name = format!("{}.{}()", &method_info.class.name, &method_info.method.name);
+                    node_methods.push((node_id, call_name));
+                }
+
+                //set node's call_name
+                let call_tree = self.tree_arena.get_call_tree(&thread_info);
+                for (node_id, call_name) in node_methods {
+                    call_tree.get_mut_node(&node_id).data.name = call_name;
+                }
             }else {
                 //warn!("Thread UNKNOWN [{:?}]: (cpu_time = {})", stack_info.thread, cpu_time);
             }
@@ -149,20 +165,16 @@ impl Sampler {
 
     fn get_method_info(&mut self, jvm_env: &Box<Environment>, method: JavaMethod) -> &MethodInfo {
         let method_id = MethodId { native_id: method };
-        {
-            self.method_cache.entry(method_id).or_insert_with(|| {
-                let method = jvm_env.get_method_name(&method_id).unwrap();
-                let class_id = jvm_env.get_method_declaring_class(&method_id).unwrap();
-                let class = jvm_env.get_class_signature(&class_id).unwrap();
-                MethodInfo {
-                    method_id: method_id,
-                    method,
-                    class
-                }
-            });
-        }
-
-        self.method_cache.get(&method_id).unwrap()
-
+        self.method_cache.entry(method_id).or_insert_with(|| {
+            let method = jvm_env.get_method_name(&method_id).unwrap();
+            let class_id = jvm_env.get_method_declaring_class(&method_id).unwrap();
+            let class = jvm_env.get_class_signature(&class_id).unwrap();
+            MethodInfo {
+                method_id: method_id,
+                method,
+                class
+            }
+        })
+        //self.method_cache.get(&method_id).unwrap()
     }
 }
