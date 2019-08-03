@@ -249,7 +249,7 @@ pub mod jvmti_native {
     pub type ssize_t = __darwin_ssize_t;
     pub type __gnuc_va_list = __builtin_va_list;
     pub type jint = c_int;
-    pub type jlong = c_long;
+    pub type jlong = i64;
     pub type jbyte = c_char;
     pub type jboolean = c_uchar;
     pub type jchar = c_ushort;

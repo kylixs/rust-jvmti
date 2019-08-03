@@ -2,6 +2,9 @@ use super::native::JavaThread;
 use std::fmt::{Display, Formatter, Error};
 use native::JavaLong;
 
+use jni::sys::*;
+use jvmti_sys::*;
+
 ///
 /// Represents a link between a JVM thread and the Rust code calling the JVMTI API.
 ///

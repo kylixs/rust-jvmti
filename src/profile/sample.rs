@@ -72,12 +72,12 @@ impl Sampler {
 //        }
     }
 
-    pub fn write_all_call_trees(&self, writer: &mut std::io::Write) {
+    pub fn write_all_call_trees(&self, writer: &mut std::io::Write, compact: bool) {
         for (thread_id, call_tree) in self.tree_arena.get_all_call_trees() {
-            let tree_name = &call_tree.get_top_node().data.name;
-            writer.write_fmt(format_args!("Thread {}", tree_name));
+            let tree_name = &call_tree.get_root_node().data.name;
+            writer.write_fmt(format_args!("Thread {} {} [{}]\n", &call_tree.thread_id, tree_name, call_tree.total_duration as f64/1000_000.0));
 
-            writer.write_all(call_tree.format_call_tree(true).as_bytes());
+            writer.write_all(call_tree.format_call_tree(compact).as_bytes());
             writer.write_all("\n".as_bytes());
         }
     }
@@ -85,13 +85,6 @@ impl Sampler {
     pub fn add_stack_traces(&mut self, jvm_env: &Box<Environment>, stack_traces: &Vec<JavaStackTrace>) {
         //merge to call stack tree
         for (i, stack_info) in stack_traces.iter().enumerate() {
-            let mut cpu_time = -1i64;
-            if let Ok(t) = jvm_env.get_thread_cpu_time(&stack_info.thread) {
-                cpu_time = t as i64 / 1000;
-            } else {
-                warn!("get_thread_cpu_time error");
-            }
-
             if let Ok(thread_info) = jvm_env.get_thread_info(&stack_info.thread) {
                 let mut call_methods :Vec<(String, String)> = vec![];
                 for stack_frame in &stack_info.frame_buffer {
@@ -101,13 +94,27 @@ impl Sampler {
                 }
                 let call_tree = self.tree_arena.get_call_tree(&thread_info);
                 call_tree.reset_top_call_stack_node();
-                for (class_name, method_name) in &call_methods {
+                //reverse call
+                for (class_name, method_name) in call_methods.iter().rev() {
                     call_tree.begin_call(class_name, method_name)
                 }
+
+                let mut cpu_time: i64 = 0_i64;
+                //if std::time::Instant::now()
+                if let Ok(t) = jvm_env.get_thread_cpu_time(&stack_info.thread) {
+                    cpu_time = t;
+                    //ignore inactive thread call
+                    if cpu_time == 0_i64 {
+                        continue;
+                    }
+                } else {
+                    println!("get_thread_cpu_time error");
+                }
+
                 call_tree.end_last_call(cpu_time);
-                println!("add call stack: {} cpu_time:{}", thread_info.name, cpu_time);
+                //println!("add call stack: {} cpu_time:{}", thread_info.name, cpu_time);
             }else {
-                warn!("Thread UNKNOWN [{:?}]: (cpu_time = {})", stack_info.thread, cpu_time);
+                //warn!("Thread UNKNOWN [{:?}]: (cpu_time = {})", stack_info.thread, cpu_time);
             }
         }
     }
@@ -119,7 +126,7 @@ impl Sampler {
 
             let mut cpu_time = -1f64;
             match jvm_env.get_thread_cpu_time(&stack_info.thread) {
-                Ok(t) => { cpu_time = t as f64 / 1000000.0 },
+                Ok(t) => { cpu_time = t as f64 / 1000_000.0 },
                 Err(err) => {
                     result.push_str(&format!("get_thread_cpu_time error: {:?}\n", err))
                 }

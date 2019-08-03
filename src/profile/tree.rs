@@ -42,13 +42,7 @@ impl TreeArena {
     }
 
     pub fn get_call_tree(&mut self, thread: &Thread) -> &mut CallStackTree {
-        self.thread_trees.entry(thread.thread_id).or_insert_with(||{
-            CallStackTree {
-                nodes: vec![TreeNode::newRootNode(&thread.name)],
-                root_node: NodeId { index: 0 },
-                top_call_stack_node: NodeId { index: 0 },
-            }
-        });
+        self.thread_trees.entry(thread.thread_id).or_insert_with(||{ CallStackTree::new(thread.thread_id, &thread.name) });
         self.thread_trees.get_mut(&thread.thread_id).unwrap()
     }
 
@@ -60,11 +54,7 @@ impl TreeArena {
                 thread_data.begin_call(&class_name, &method_name);
             },
             None => {
-                self.thread_trees.insert(thread.thread_id, CallStackTree {
-                    nodes: vec![TreeNode::newRootNode(&thread.name)],
-                    root_node: NodeId { index: 0 },
-                    top_call_stack_node: NodeId { index: 0 },
-                });
+                self.thread_trees.insert(thread.thread_id, CallStackTree::new(thread.thread_id, &thread.name));
                 let thread_data = self.thread_trees.get_mut(&thread.thread_id).unwrap();
                 thread_data.begin_call(&class_name, &method_name);
                 println!(" create call tree: [{:?}] [{}], total trees: {} ", thread.thread_id, thread.name, self.thread_trees.len());
@@ -113,10 +103,22 @@ impl TreeArena {
 pub struct CallStackTree {
     nodes: Vec<TreeNode>,
     root_node: NodeId,
-    top_call_stack_node: NodeId
+    top_call_stack_node: NodeId,
+    pub total_duration: i64,
+    pub thread_id: JavaLong
 }
 
 impl CallStackTree {
+
+    pub fn new(thread_id: JavaLong, thread_name: &str) -> CallStackTree {
+        CallStackTree {
+            nodes: vec![TreeNode::newRootNode(thread_name)],
+            root_node: NodeId { index: 0 },
+            top_call_stack_node: NodeId { index: 0 },
+            total_duration: 0,
+            thread_id: thread_id
+        }
+    }
 
     pub fn reset_top_call_stack_node(&mut self) {
         self.top_call_stack_node = self.root_node;
@@ -177,10 +179,15 @@ impl CallStackTree {
         }
     }
 
-    pub fn end_last_call(&mut self, duration: i64) {
+    pub fn end_last_call(&mut self, total_duration: i64) {
+        let last_duration = self.total_duration;
         let top_node = self.get_mut_top_node();
-        top_node.data.call_duration += duration;
+        //ignore first call duration
+        if(last_duration > 0){
+            top_node.data.call_duration += (total_duration - last_duration);
+        }
         top_node.data.call_count += 1;
+        self.total_duration = total_duration;
     }
 
     //
@@ -210,7 +217,7 @@ impl CallStackTree {
         }else {
 
         }
-        result.push_str(&format!("{}[calls={}, duration={}]\n", node.data.name, node.data.call_count, call_duration));
+        result.push_str(&format!("{}[calls={}, duration={}]\n", node.data.name, node.data.call_count, call_duration as f64/1000_000.0));
 
         for child in node.children.values() {
             self.format_tree_node(result,&child, compact);
@@ -227,6 +234,10 @@ impl CallStackTree {
 
     pub fn get_node(&self, node_id: &NodeId) -> &TreeNode {
         &self.nodes[node_id.index]
+    }
+
+    pub fn get_root_node(&self) -> &TreeNode {
+        &self.nodes[self.root_node.index]
     }
 }
 
@@ -255,7 +266,7 @@ pub struct TreeNode {
 
 impl TreeNode {
 
-    pub fn newRootNode(name: &String) -> TreeNode {
+    pub fn newRootNode(name: &str) -> TreeNode {
         TreeNode{
             data : NodeData {
                 node_id: NodeId{index:0},

@@ -11,6 +11,8 @@ extern crate serde_derive;
 extern crate env_logger;
 extern crate serde_json;
 extern crate serde;
+extern crate jni;
+extern crate jvmti_sys;
 
 use agent::Agent;
 use bytecode::printer::ClassfilePrinter;
@@ -358,18 +360,18 @@ pub extern fn Agent_OnAttach(vm: JavaVMPtr, options: MutString, reserved: VoidPt
                             }
                         }
 
-                        if samples % 20 == 0 {
+                        if samples % 100 == 0 {
                             let t4 = time::now();
                             let file_path = Path::new("flare-data.txt");
                             println!("[{}] writing to file: {}", nowTime(), file_path.display());
                             let mut file = std::fs::File::create(file_path).expect("create failed");
                             //file.write_all(&output.as_bytes()).expect("write failed");
-                            SAMPLER.lock().unwrap().write_all_call_trees(&mut file);
+                            SAMPLER.lock().unwrap().write_all_call_trees(&mut file, true);
                             let t5 = time::now();
                             println!("[{}] print all stack traces, cost: {}ms", nowTime(), (t5-t4).num_microseconds().unwrap() as f64 / 1000.0);
                         }
 
-                        std::thread::sleep(std::time::Duration::from_millis(100));
+                        std::thread::sleep(std::time::Duration::from_millis(50));
                     }
                     set_trace_enable(false);
                     println!("Trace agent is stopped.");
