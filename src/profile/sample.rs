@@ -98,14 +98,19 @@ impl Sampler {
                     println!("get_thread_cpu_time error");
                 }
 
+                let call_tree = self.tree_arena.get_call_tree(&thread_info);
+                call_tree.reset_top_call_stack_node();
+                if call_tree.total_duration == cpu_time {
+                    continue;
+                }
+
                 let mut call_methods :Vec<JavaMethod> = vec![];
                 for stack_frame in &stack_info.frame_buffer {
                     call_methods.push(stack_frame.method);
                 }
                 //save nodes in temp vec, process it after build call tree, avoid second borrow muttable *self
                 let mut naming_nodes: Vec<(NodeId, JavaMethod)> = vec![];
-                let call_tree = self.tree_arena.get_call_tree(&thread_info);
-                call_tree.reset_top_call_stack_node();
+
                 //reverse call
                 for method_id in call_methods.iter().rev() {
                     if !call_tree.begin_call(method_id) {
